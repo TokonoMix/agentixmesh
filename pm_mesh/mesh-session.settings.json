@@ -1,0 +1,46 @@
+{
+  "$comment": "HARDENED capability profile for a DEDICATED mesh-reachable PM session (f2-13). NOT the user-global ~/.claude/settings.json — apply this only to a session that receives mesh messages, e.g. as a project-level .claude/settings.json for the mesh-coordinator project. Deny-by-default posture: defaultMode is 'default' (never bypassPermissions), the deny list makes irreversible/external actions non-executable, and the allow list is curated to the minimum a coordinator needs (receive/reply over the mesh + read-only git + Read). It contains NO interpreter wildcard (python/node/bash -c) so a prefix-deny cannot be bypassed via an interpreter. Verified clean by: python3 -m pm_mesh.capability_lint <this-file> mesh-reachable-pm (exit 0).",
+  "permissions": {
+    "defaultMode": "default",
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(gpasswd:*)",
+      "Bash(usermod:*)",
+      "Bash(rm -rf:*)",
+      "Bash(dd:*)",
+      "Bash(shred:*)",
+      "Bash(mkfs:*)",
+      "Bash(systemctl:*)",
+      "Bash(service:*)",
+      "Bash(reboot:*)",
+      "Bash(shutdown:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)",
+      "Bash(nc:*)",
+      "Bash(netcat:*)",
+      "Bash(socat:*)",
+      "Bash(telnet:*)",
+      "Bash(ftp:*)",
+      "WebFetch",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)",
+      "Bash(crontab:*)",
+      "Bash(at:*)",
+      "Bash(apt:*)",
+      "Bash(pip install:*)",
+      "Bash(npm install:*)"
+    ],
+    "allow": [
+      "Bash(mesh-send:*)",
+      "Bash(mesh-inject:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Read"
+    ]
+  }
+}

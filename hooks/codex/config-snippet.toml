@@ -1,0 +1,30 @@
+# agentixmesh delivery adapter for OpenAI Codex CLI — ADDITIVE snippet for ~/.codex/config.toml
+#
+# COMPOSE this with your existing config; do not replace the file. Codex CLI uses the SAME hook
+# events as Claude Code (SessionStart / UserPromptSubmit) and adds a command's plain stdout as
+# extra context, so the harness-neutral `mesh-inject` works unchanged — only the wiring differs.
+#
+# `mesh-inject` must be on PATH (or replace `command` with an absolute interpreter path, e.g.
+# "/path/to/venv/bin/python -m pm_mesh.inject"). The hook is fail-closed: any error exits 0, so it
+# can never block or fail a Codex session.
+#
+# Codex runs the hook with the session details as JSON on stdin (including `cwd`). agentixmesh reads
+# that `cwd` to address the right mailbox even if Codex does not run the hook from the session dir.
+# If you prefer to be explicit, set MESH_CWD in the command instead of relying on stdin.
+#
+# `timeout` is in seconds (Codex default 600 if omitted); 10 is plenty for a local mailbox read.
+
+[[hooks.SessionStart]]
+matcher = "startup|resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "mesh-inject"
+timeout = 10
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "mesh-inject"
+timeout = 10

@@ -1,0 +1,28 @@
+{
+  "_README": "ADDITIVE snippet for ~/.codex/hooks.json — an alternative to the config.toml form (Codex accepts either; it merges both if present). COMPOSE with your existing hooks; do not overwrite. mesh-inject must be on PATH (or replace command with an absolute interpreter path). The hook is fail-closed: any error exits 0, so it never blocks a Codex session. Codex pipes session JSON (including cwd) to the hook on stdin; agentixmesh reads that cwd to address the right mailbox. See hooks/codex/README.md.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mesh-inject",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mesh-inject",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

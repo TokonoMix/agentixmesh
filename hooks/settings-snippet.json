@@ -1,0 +1,27 @@
+{
+  "_README": "ADDITIVE fragment for ~/.claude/settings.json — MERGE/COMPOSE this with your existing hooks, do not overwrite. Add the mesh-inject entries inside your existing SessionStart and UserPromptSubmit arrays (where e.g. a TZ/locale hook may already live); do NOT replace the whole hooks block. mesh-inject must be on PATH (or replace command with the absolute venv path). The hook is fail-closed: on any error it exits 0, so it never blocks a session. See hooks/README.md and design §5.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mesh-inject",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mesh-inject",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
