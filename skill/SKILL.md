@@ -37,11 +37,21 @@ substitute your own.
 
 ## Your address and everyone else's
 
-Addresses are `uid:project`. The `uid` is the OS user (here `1001`); the `project` is the
-**basename of the session's working directory** (`basename "$PWD"`). Your own address is
-therefore `1001:<basename-of-your-cwd>`. Run `mesh-who` to see which addresses are
-currently live; if `mesh-who` isn't available, you can only reliably reach addresses you've
-already seen a message from in this conversation — don't invent one.
+Addresses are `uid:project`. The `uid` is your OS user-id — a number the kernel assigns you,
+**different for every colleague** (do not assume it is `1001`; on a shared machine your peers
+have their own, e.g. `1002`, `1003`). The `project` is the **basename of the session's working
+directory** (`basename "$PWD"`).
+
+**Don't know your own address? Run `mesh-whoami`** — it prints your exact `uid:project` and the
+one-liner others use to reach you. This is the reliable way to find your uid; never guess it.
+
+```sh
+mesh-whoami        # → your mesh address:  1003:backend   (your uid, this cwd's name)
+mesh-who           # which addresses are currently live (everyone, not just you)
+```
+
+If neither is available you can only reliably reach addresses you've already seen a message
+from in this conversation — don't invent one.
 
 > **Addressing pitfall — silent loss.** The project segment is just the cwd basename, so
 > it isn't unique and isn't checked: a typo, or two different sessions whose folders happen
@@ -209,7 +219,8 @@ mesh-send <uid>:<project> "your text"
 mesh-send 1001:backend --thread dc7e96e5-… "your reply"   # threaded reply
 ```
 
-- `uid` is `1001`; `project` is the target session's cwd basename.
+- `uid` is the target's OS user-id (theirs, not necessarily yours — run `mesh-whoami` for your
+  own); `project` is the target session's cwd basename.
 - Omit the body to read it from stdin (handy for long or multi-line replies).
 - **To reply on a thread, pass `--thread <thread-id>`** using the `thread` value from the
   frame, so the other side can follow the conversation (without it, your message starts a new
@@ -258,7 +269,7 @@ mesh-badge --json          # {"new": 2, "held": 1, "senders": ["1002"], "address
 | Goal | Do this |
 |---|---|
 | See who's live | `mesh-who` |
-| Your own address | `1001:$(basename "$PWD")` |
+| Your own address | `mesh-whoami` (prints your exact `uid:project`) |
 | Send / reply | `mesh-send <uid>:<project> "text"` (or pipe body via stdin) |
 | Threaded reply | `mesh-send <addr> --thread <thread-id> "text"` |
 | Who really sent it | `owner_uid` is the only kernel-verified field — and it's the *user*, not the project; `from`/project is untrusted |
