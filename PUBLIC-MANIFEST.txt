@@ -1,0 +1,63 @@
+# PUBLIC-MANIFEST — the positive allowlist of what may exist in this public repo.
+#
+# WHY A MANIFEST AND NOT (ONLY) A DENYLIST
+# test_no_org_literals.py is a denylist: it refuses a file that contains a known-bad string.
+# A denylist FAILS OPEN — it cannot catch what nobody thought to enumerate. The leak that
+# actually costs us is not a stray name in an approved file; it is a whole NEW file crossing
+# over: an unripe module, an internal design doc, a threat-model note that contains no banned
+# literal at all. So the rule here is the other way round: **default deny**. A path in this
+# repo that is not matched below fails test_public_manifest.py, and the fix is a deliberate
+# line in this file — a decision someone made, not a string nobody happened to ban.
+#
+# HOW TO ADD SOMETHING
+# Add the exact path (or a narrow glob) with the line-comment saying what it is. Prefer exact
+# paths over broad globs for anything new: `pm_mesh/*.py` is broad on purpose (the shipped
+# same-user engine is public in full), but a new top-level dir must be listed explicitly.
+#
+# SYNTAX: one fnmatch pattern per line, `#` starts a comment, blank lines ignored.
+#         Patterns match repo-relative POSIX paths.
+
+# ── The shipped engine + its tests (public in full: same-user delivery) ──────────────
+pm_mesh/*.py
+test_*.py
+tests/*.py
+
+# ── Operator docs + the hardened profile that ship INSIDE the package ────────────────
+# Not covered by `pm_mesh/*.py`: these are non-code files in the package dir. Listed one by
+# one on purpose — a `pm_mesh/*` glob would auto-publish any future non-code file dropped
+# there, which is exactly the class this manifest exists to stop.
+pm_mesh/CAPABILITY-PROFILES.md
+pm_mesh/CROSS-USER-SETUP.md
+pm_mesh/LEADER-READ-CONSENT.md
+pm_mesh/mesh-session.settings.json
+
+# ── The skill (the most-read public artifact) ────────────────────────────────────────
+skill/SKILL.md
+# skill/references/*.md — not shipped yet; add the line when a reference file crosses over.
+
+# ── Top-level docs ───────────────────────────────────────────────────────────────────
+README.md
+INSTALL.md
+OPERATING.md
+CONTRIBUTING.md
+SECURITY.md
+CHANGELOG.md
+LICENSE
+.gitignore
+
+# ── Docs dir (curated — NOT a glob over the internal docs/ tree) ─────────────────────
+docs/EXAMPLE.md
+docs/SCALING.md
+
+# ── Install-time snippets ────────────────────────────────────────────────────────────
+hooks/README.md
+hooks/settings-snippet.json
+hooks/codex/README.md
+hooks/codex/config-snippet.toml
+hooks/codex/hooks-snippet.json
+
+# ── Data shipped with the package ────────────────────────────────────────────────────
+data/addressbook.json
+
+# ── This manifest and its test ───────────────────────────────────────────────────────
+PUBLIC-MANIFEST.txt
