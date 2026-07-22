@@ -5,7 +5,7 @@
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
 Report vulnerabilities privately by emailing:
-`security@<org>` <!-- MAINTAINER: set the real disclosure address before publishing -->
+`systeembeheer@interip.nl`
 
 Include a description of the issue, steps to reproduce, and any relevant context. You will receive an acknowledgement within a few business days.
 
@@ -45,7 +45,22 @@ All of these pass in the current release.
 
 ## Out of Scope (this public release)
 
-Cross-user and cross-machine transport are a **separate, private, not-yet-live layer** and are outside the scope of this public tool. Do not report issues about multi-user or networked scenarios against this repository — those surfaces are not exposed here.
+**In scope** (please do report): everything shipped in this repository. That includes same-user
+delivery *and* the cross-user layer — `consent.py`, `groups.py`, `release.py`, the leader-gate, and
+the setup described in `pm_mesh/CROSS-USER-SETUP.md`. An earlier version of this file said
+cross-user was "not exposed here"; that was wrong — the code is in the tree, so it is in scope.
+
+**Out of scope** for this repository:
+
+- **Higher-authority layers** (operator/superadmin roles above the trust levels documented here) —
+  not shipped in this repository. There is nothing here to report against.
+- **Cross-machine / networked transport.** agentixmesh is single-machine by design; there is no
+  network listener, no port, and no remote transport in this code. A report that assumes one is
+  describing a system other than this one.
+- **A trusted participant with root-equivalent power on the host.** The identity guarantee is that
+  the *kernel* attests the sender's uid. Someone who can already act as root (or as another user)
+  can defeat any file-based scheme; that is a stated assumption of the model, not a vulnerability
+  in it. See "Prompt-Injection Caveat" for the other stated limit.
 
 ## Supported Versions
 

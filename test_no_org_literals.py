@@ -33,6 +33,15 @@ _BANNED_NAMES = (
     "paperclip",     # internal tracker (product name, not a person)
 )
 
+# Deliberately published strings that contain a banned name. Subtracted from the text BEFORE
+# scanning, so the exemption is per-STRING, not per-file: the copyright line and the disclosure
+# address are meant to be public, while any OTHER use of the org name in the same file still
+# fails. A file-wide exemption would have turned SECURITY.md into a blind spot.
+_ALLOWED_LITERALS = (
+    "interip networks bv",        # LICENSE: the copyright holder, deliberately public
+    "systeembeheer@interip.nl",   # SECURITY.md: the real disclosure address (set 2026-07-22)
+)
+
 # OPEN — decision D3 (Mes): also ban ticket refs (`int-1234`) and the real uid literals
 # (1001/1003), keeping only synthetic examples (1000:projectA)? Recommended, not yet applied:
 # it would touch a lot of prose and needs one decision, not a guess.
@@ -54,6 +63,7 @@ _SCAN_GLOBS = (
     "skill/*.md",
     "skill/**/*.md",
     "data/*.json",
+    "LICENSE",          # names the copyright holder on purpose — scanned so OTHER names cannot hide there
     "hooks/*",
     "scripts/*",
 )
@@ -69,6 +79,13 @@ def _sources(repo):
             if p not in seen:
                 seen.append(p)
     return seen
+
+
+def _strip_allowed(text):
+    """Remove the deliberately-published literals, so only unintended uses of a name remain."""
+    for lit in _ALLOWED_LITERALS:
+        text = text.replace(lit, " ")
+    return text
 
 
 def _name_hits(text, name):
@@ -91,7 +108,7 @@ class NoOrgLiteralsTest(unittest.TestCase):
     def test_public_surface_has_no_org_or_personal_names(self):
         repo = pathlib.Path(__file__).parent
         for path in _sources(repo):
-            text = path.read_text(encoding="utf-8", errors="replace").lower()
+            text = _strip_allowed(path.read_text(encoding="utf-8", errors="replace").lower())
             for banned in _BANNED_NAMES:
                 self.assertFalse(
                     _name_hits(text, banned),
@@ -110,3 +127,10 @@ class NoOrgLiteralsTest(unittest.TestCase):
         self.assertTrue(_name_hits("mail mkalkan about it", "mkalkan"))
         self.assertFalse(_name_hits("agents never sleep, the fleet is asleep", "lee"))
         self.assertFalse(_name_hits("parallelism", "lee"))
+
+    def test_the_exemption_is_per_string_not_per_file(self):
+        """The disclosure address may name the org; a stray mention in the same file may not."""
+        ok = _strip_allowed("report to systeembeheer@interip.nl within a few days")
+        self.assertFalse(_name_hits(ok, "interip"))
+        leak = _strip_allowed("report to systeembeheer@interip.nl, hosted on the interip beta server")
+        self.assertTrue(_name_hits(leak, "interip"))
