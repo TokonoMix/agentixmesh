@@ -63,7 +63,7 @@ class TestValidMessageFromFile:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)) as mock_run,
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            rc = dcp_send.main([f"1002:sandbox", str(json_file)])
+            rc = dcp_send.main([f"1200:sandbox", str(json_file)])
 
         assert rc == 0
 
@@ -75,7 +75,7 @@ class TestValidMessageFromFile:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)) as mock_run,
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            dcp_send.main(["1002:sandbox", str(json_file)])
+            dcp_send.main(["1200:sandbox", str(json_file)])
 
         mock_run.assert_called_once()
 
@@ -94,7 +94,7 @@ class TestValidMessageFromFile:
             patch("pm_mesh.dcp_send.subprocess.run", side_effect=fake_run),
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            dcp_send.main(["1002:sandbox", str(json_file)])
+            dcp_send.main(["1200:sandbox", str(json_file)])
 
         assert "input" in captured_kwargs
         body = captured_kwargs["input"]
@@ -116,9 +116,9 @@ class TestValidMessageFromFile:
             patch("pm_mesh.dcp_send.subprocess.run", side_effect=fake_run),
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            dcp_send.main(["1002:sandbox", str(json_file)])
+            dcp_send.main(["1200:sandbox", str(json_file)])
 
-        assert "1002:sandbox" in captured_cmd["cmd"]
+        assert "1200:sandbox" in captured_cmd["cmd"]
 
     def test_no_shell_true(self, tmp_path):
         """subprocess.run must be called with shell=False (list argv, not shell=True)."""
@@ -135,7 +135,7 @@ class TestValidMessageFromFile:
             patch("pm_mesh.dcp_send.subprocess.run", side_effect=fake_run),
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            dcp_send.main(["1002:sandbox", str(json_file)])
+            dcp_send.main(["1200:sandbox", str(json_file)])
 
         assert not captured_kwargs.get("shell", False)
 
@@ -156,7 +156,7 @@ class TestInvalidMessage:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)) as mock_run,
             patch("pm_mesh.dcp.validate", return_value=(False, ["missing required field: message_type"])),
         ):
-            rc = dcp_send.main(["1002:sandbox", str(json_file)])
+            rc = dcp_send.main(["1200:sandbox", str(json_file)])
 
         assert rc != 0
 
@@ -168,7 +168,7 @@ class TestInvalidMessage:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)) as mock_run,
             patch("pm_mesh.dcp.validate", return_value=(False, ["missing required field: message_type"])),
         ):
-            dcp_send.main(["1002:sandbox", str(json_file)])
+            dcp_send.main(["1200:sandbox", str(json_file)])
 
         mock_run.assert_not_called()
 
@@ -180,7 +180,7 @@ class TestInvalidMessage:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)),
             patch("pm_mesh.dcp.validate", return_value=(False, ["missing required field: message_type"])),
         ):
-            dcp_send.main(["1002:sandbox", str(json_file)])
+            dcp_send.main(["1200:sandbox", str(json_file)])
 
         captured = capsys.readouterr()
         assert "missing required field" in captured.err
@@ -201,7 +201,7 @@ class TestStdinPath:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)) as mock_run,
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            rc = dcp_send.main(["1002:sandbox", "-"])
+            rc = dcp_send.main(["1200:sandbox", "-"])
 
         assert rc == 0
         mock_run.assert_called_once()
@@ -219,7 +219,7 @@ class TestStdinPath:
             patch("pm_mesh.dcp_send.subprocess.run", side_effect=fake_run),
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            dcp_send.main(["1002:sandbox", "-"])
+            dcp_send.main(["1200:sandbox", "-"])
 
         assert '<dcp v="1.0">' in captured_kwargs["input"]
 
@@ -230,7 +230,7 @@ class TestStdinPath:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(0)) as mock_run,
             patch("pm_mesh.dcp.validate", return_value=(False, ["bad payload"])),
         ):
-            rc = dcp_send.main(["1002:sandbox", "-"])
+            rc = dcp_send.main(["1200:sandbox", "-"])
 
         assert rc != 0
         mock_run.assert_not_called()
@@ -249,15 +249,15 @@ class TestArgErrors:
         assert "usage" in captured.err.lower()
 
     def test_one_arg(self, capsys):
-        rc = dcp_send.main(["1002:sandbox"])
+        rc = dcp_send.main(["1200:sandbox"])
         assert rc != 0
 
     def test_three_args(self, tmp_path, capsys):
-        rc = dcp_send.main(["1002:sandbox", "a", "b"])
+        rc = dcp_send.main(["1200:sandbox", "a", "b"])
         assert rc != 0
 
     def test_missing_file(self, capsys):
-        rc = dcp_send.main(["1002:sandbox", "/nonexistent/path.json"])
+        rc = dcp_send.main(["1200:sandbox", "/nonexistent/path.json"])
         assert rc != 0
         captured = capsys.readouterr()
         assert "could not read" in captured.err
@@ -277,7 +277,7 @@ class TestTransportFailure:
             patch("pm_mesh.dcp_send.subprocess.run", return_value=_make_run_result(1)),
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            rc = dcp_send.main(["1002:sandbox", str(json_file)])
+            rc = dcp_send.main(["1200:sandbox", str(json_file)])
 
         assert rc == 1
 
@@ -289,7 +289,7 @@ class TestTransportFailure:
             patch("pm_mesh.dcp_send.subprocess.run", side_effect=OSError("no such binary")),
             patch("pm_mesh.dcp.validate", return_value=(True, [])),
         ):
-            rc = dcp_send.main(["1002:sandbox", str(json_file)])
+            rc = dcp_send.main(["1200:sandbox", str(json_file)])
 
         assert rc != 0
         captured = capsys.readouterr()

@@ -2,8 +2,8 @@
 
 A participant addresses others as ``uid:project`` but often does not know their OWN uid (it is the
 numeric kernel user-id, not a memorable name). Guessing is error-prone — a mesh address typo silently
-loses a message — and the skill used to hardcode ``1001`` as "the uid", which is exactly wrong for a
-colleague on a different account (e.g. uid 1003, not 1001). This command removes the guess: run it,
+loses a message — and the skill used to hardcode ``1100`` as "the uid", which is exactly wrong for a
+colleague on a different account (e.g. uid 1300, not 1100). This command removes the guess: run it,
 read your address, share it.
 
 The uid half is the kernel-verified identity (stable, unforgeable); the project half is just this

@@ -179,14 +179,14 @@ class BadgeSendersTest(unittest.TestCase):
         def fake_open_verified(path):
             fd, _real_uid = real_open_verified(path)
             if os.path.basename(os.path.dirname(path)) == "new":
-                return fd, 1002
-            return fd, 1003
+                return fd, 1200
+            return fd, 1300
 
         with as_address(self.root), \
              mock.patch("pm_mesh.identity.open_verified", side_effect=fake_open_verified):
             info = badge.gather()
 
-        self.assertEqual(set(info["senders"]), {"1002", "1003"})
+        self.assertEqual(set(info["senders"]), {"1200", "1300"})
         for s in info["senders"]:
             self.assertIsInstance(s, str)
             self.assertNotIn("evil-project", s)

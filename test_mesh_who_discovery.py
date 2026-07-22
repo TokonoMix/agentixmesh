@@ -33,9 +33,9 @@ def _put(root, uid, project, last_seen_epoch):
         json.dump(rec, fh)
 
 
-CALLER = 1001
-MATE = 1002       # same group as CALLER
-STRANGER = 1003   # no shared group
+CALLER = 1100
+MATE = 1200       # same group as CALLER
+STRANGER = 1300   # no shared group
 LEADER = 1009
 
 

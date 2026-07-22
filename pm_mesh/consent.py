@@ -1,7 +1,7 @@
 """Leader-read consent (phase 2, f2-14, F4/condition 5) — **fail-closed default = NO leader-read**.
 
-Leader-read means the head leader (an operator/lead role, e.g. uid 1001) can read the inbox of a
-subject (another team member, e.g. uid 1002), including messages from third parties to that subject.
+Leader-read means the head leader (an operator/lead role, e.g. uid 1100) can read the inbox of a
+subject (another team member, e.g. uid 1200), including messages from third parties to that subject.
 That is a **privacy choice the subject must explicitly grant** and can **revoke**. Until there is a
 valid, subject-owned consent artifact, ``leader_read_allowed`` returns **False** (fail-closed): no
 conscious consent, no leader-read.

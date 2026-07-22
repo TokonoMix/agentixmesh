@@ -1,6 +1,6 @@
 # Leader-read consent artifact (agentixmesh phase 2, f2-14 — F4 / condition 5)
 
-> **Leader-read = the head leader (e.g. uid 1001) can read the inbox of a subject (e.g. uid 1002)**,
+> **Leader-read = the head leader (e.g. uid 1100) can read the inbox of a subject (e.g. uid 1200)**,
 > including messages from third parties to that subject. That is a **privacy choice the subject
 > itself explicitly grants and can revoke**. Default = **OFF** (fail-closed): without a valid
 > consent artifact, `consent.leader_read_allowed(...)` returns `False` and no leader-read may

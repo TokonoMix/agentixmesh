@@ -98,7 +98,7 @@ It is **layered**, each layer only adding or overriding what the previous one di
 3. `~/.config/pm-mesh/addressbook.json` (personal — your own aliases win)
 
 ```sh
-mesh-resolve reviewer           # → 1002:reviews   (or exit 1 + a hint if unknown)
+mesh-resolve reviewer           # → 1200:reviews   (or exit 1 + a hint if unknown)
 mesh-resolve --list             # the whole book: address · display · aliases
 mesh-who                        # which addresses are live right now (same-user session discovery)
 mesh-send reviewer "hi"         # mesh-send resolves the alias for you before delivery

@@ -126,8 +126,8 @@ class InjectTest(unittest.TestCase):
 
 class WelcomeTest(unittest.TestCase):
     def test_catalog_returns_english_and_interpolates(self):
-        s = messages.t("welcome_address", address="1001:proj")
-        self.assertIn("1001:proj", s)
+        s = messages.t("welcome_address", address="1100:proj")
+        self.assertIn("1100:proj", s)
 
     def test_welcome_content_isolation_from_marker(self):
         # The marker is a boolean trigger; its CONTENT must never be interpolated into the welcome (sec-4).
@@ -148,19 +148,19 @@ class WelcomeTest(unittest.TestCase):
                      mock.patch("pm_mesh.config.onboarding_done_path", return_value=done):
                     buf = io.StringIO()
                     with redirect_stdout(buf):
-                        inject._maybe_show_welcome("1001:proj")
+                        inject._maybe_show_welcome("1100:proj")
                     output = buf.getvalue()
                     self.assertNotIn("INJECTED-SENTINEL", output)  # content is boolean trigger only
                     self.assertIn("mesh-welcome", output)
-                    self.assertIn("1001:proj", output)
+                    self.assertIn("1100:proj", output)
 
     def test_welcome_has_frame_prefix_and_tags(self):
         # render_welcome goes through trusted frame surface: each line has │ prefix, wrapped in tags.
-        out = inject.render_welcome("1001:proj")
+        out = inject.render_welcome("1100:proj")
         self.assertIn("<mesh-welcome>", out)
         self.assertIn("</mesh-welcome>", out)
         self.assertIn("│ ", out)
-        self.assertIn("1001:proj", out)
+        self.assertIn("1100:proj", out)
         self.assertIn("mesh-send", out)
 
     def test_platform_ok_returns_bool_never_raises(self):
@@ -203,14 +203,14 @@ class WelcomeOnceTest(unittest.TestCase):
              mock.patch("pm_mesh.config.onboarding_done_path", return_value=done):
             buf = io.StringIO()
             with redirect_stdout(buf):
-                inject._maybe_show_welcome("1001:proj")
+                inject._maybe_show_welcome("1100:proj")
             self.assertIn("agentixmesh", buf.getvalue())
             self.assertTrue(os.path.isfile(done))
             self.assertFalse(os.path.isfile(pending))
             # second call: sentinel present, marker gone -> nothing shown
             buf2 = io.StringIO()
             with redirect_stdout(buf2):
-                inject._maybe_show_welcome("1001:proj")
+                inject._maybe_show_welcome("1100:proj")
             self.assertEqual(buf2.getvalue(), "")
 
     def test_guard_fail_preserves_pending_marker(self):

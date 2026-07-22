@@ -1,7 +1,7 @@
 # agentixmesh — host integration (reproducible)
 
 The repo is self-contained, but hangs off **four** host integration points outside the repo.
-After a move/reboot/fresh machine, reproduce them like this (`1001` is an example login uid —
+After a move/reboot/fresh machine, reproduce them like this (`1100` is an example login uid —
 substitute your own; `$REPO` = wherever you cloned this repo):
 
 | # | Integration point | Location | What |

@@ -17,7 +17,7 @@ from unittest import mock
 
 from pm_mesh import consent
 
-LEADER = 1001
+LEADER = 1100
 
 
 class GrantConsentTest(unittest.TestCase):

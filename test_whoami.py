@@ -1,6 +1,6 @@
 """``mesh-whoami``: show a participant their OWN address.
 
-A new participant may not know their own uid — the skill used to hardcode ``1001`` as "the uid".
+A new participant may not know their own uid — the skill used to hardcode ``1100`` as "the uid".
 One command must show it instead of guessing a number.
 """
 from __future__ import annotations

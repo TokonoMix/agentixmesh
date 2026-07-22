@@ -35,7 +35,7 @@ Root config: `$MESH_ROOT` (default `$XDG_DATA_HOME/pm-mesh` or `~/.local/share/p
 
 ## 2. Daily use
 
-Example with two of your own projects under the same uid — `1001:backend` ↔ `1001:frontend` (the
+Example with two of your own projects under the same uid — `1100:backend` ↔ `1100:frontend` (the
 `uid` part is your numeric kernel uid, e.g. `1000:backend`):
 
 ```sh
@@ -148,8 +148,8 @@ Honest, not designed away in B1:
 
 ## Phase 2 — cross-user privacy boundary (leader-read, F4/condition 5)
 
-Cross-user introduces **leader-read**: the head leader (e.g. uid 1001) can read the inbox of a
-subject (e.g. uid 1002). Two things are firm:
+Cross-user introduces **leader-read**: the head leader (e.g. uid 1100) can read the inbox of a
+subject (e.g. uid 1200). Two things are firm:
 
 - **Consent with fail-closed default.** Leader-read is **OFF** until the subject itself supplies a
   valid consent artifact (`pm_mesh/LEADER-READ-CONSENT.md`; `consent.leader_read_allowed` = `False`

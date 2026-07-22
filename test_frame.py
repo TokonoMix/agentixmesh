@@ -231,15 +231,15 @@ class ReplyHintTest(unittest.TestCase):
 
     def test_hint_uid_follows_kernel_param(self):
         """Varying owner_uid changes the hint uid (it's driven by the kernel param)."""
-        msg1 = _msg_with_thread("body", from_="1001:proj", thread="th-1")
-        msg2 = _msg_with_thread("body", from_="1001:proj", thread="th-1")
-        out1 = frame.render(msg1, owner_uid=1001)
+        msg1 = _msg_with_thread("body", from_="1100:proj", thread="th-1")
+        msg2 = _msg_with_thread("body", from_="1100:proj", thread="th-1")
+        out1 = frame.render(msg1, owner_uid=1100)
         out2 = frame.render(msg2, owner_uid=5555)
 
         hints1 = self._hint_lines(out1)
         hints2 = self._hint_lines(out2)
 
-        self.assertTrue(any("1001" in h for h in hints1))
+        self.assertTrue(any("1100" in h for h in hints1))
         self.assertTrue(any("5555" in h for h in hints2))
         # They should differ because the uid differs
         self.assertNotEqual(hints1, hints2)

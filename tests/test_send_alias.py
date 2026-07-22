@@ -18,7 +18,7 @@ def test_send_resolves_alias_to_canonical_address(monkeypatch, tmp_path):
 
     rc = send.main(["reviewer", "hi"])
     assert rc == 0
-    assert captured["to"] == "1002:reviews"   # 'reviewer' resolved via the book
+    assert captured["to"] == "1200:reviews"   # 'reviewer' resolved via the book
 
 
 def test_send_passes_bare_address_through(monkeypatch, tmp_path):

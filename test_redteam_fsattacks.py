@@ -275,7 +275,7 @@ class ReceiverOnlyAclTest(unittest.TestCase):
 
     def _getfacl(self, path):
         # ``-n`` forces numeric uid/gid output. Without it, getfacl resolves the uid to its
-        # account name (e.g. "user:claude:r--" instead of "user:1001:r--") whenever the name
+        # account name (e.g. "user:claude:r--" instead of "user:1100:r--") whenever the name
         # is resolvable -- which silently breaks any assertion keyed on the numeric uid.
         return subprocess.run(
             ["getfacl", "-n", "-p", path], capture_output=True, text=True, timeout=10

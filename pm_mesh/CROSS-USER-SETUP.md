@@ -57,7 +57,7 @@ Run this **as the receiver** (or via `sudo -u <receiver>`), so the dirs are owne
 receiver — the identity pivot of the model:
 
 ```sh
-ADDR="1001:backend"          # <uid>:<project> of the RECEIVER
+ADDR="1100:backend"          # <uid>:<project> of the RECEIVER
 DROP="/srv/mesh/$ADDR"
 
 mkdir -p "$DROP/new" "$DROP/cur" "$DROP/held"
@@ -75,10 +75,10 @@ chmod 0700 "$DROP/cur" "$DROP/held"       # receiver-only
 ## Verification
 
 ```sh
-stat -c '%A %U:%G %n' /srv/mesh /srv/mesh/1001:backend /srv/mesh/1001:backend/new
+stat -c '%A %U:%G %n' /srv/mesh /srv/mesh/1100:backend /srv/mesh/1100:backend/new
 # expected, among others:  drwxr-s---  root:mesh  /srv/mesh
-#                          drwx--s---  <receiver>:mesh  .../1001:backend
-#                          drwx-ws--T  <receiver>:mesh  .../1001:backend/new   (s=setgid, T=sticky without other-x)
+#                          drwx--s---  <receiver>:mesh  .../1100:backend
+#                          drwx-ws--T  <receiver>:mesh  .../1100:backend/new   (s=setgid, T=sticky without other-x)
 ```
 
 ## Hardening requirements on the host (council findings f2-01)

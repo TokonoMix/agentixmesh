@@ -26,8 +26,8 @@ from pm_mesh import config, message, release
 from pm_mesh.message import new_message, to_json
 
 
-def _make_msg(to="1001:proj") -> message.Message:
-    return new_message(to=to, body="hello", from_="1002:other")
+def _make_msg(to="1100:proj") -> message.Message:
+    return new_message(to=to, body="hello", from_="1200:other")
 
 
 def _stage_msg(address, owner_uid, msg, root):
@@ -38,7 +38,7 @@ def _stage_msg(address, owner_uid, msg, root):
 class TestReleaseDir(unittest.TestCase):
     def test_returns_correct_path(self):
         with tempfile.TemporaryDirectory() as root:
-            addr = "1001:proj"
+            addr = "1100:proj"
             expected = os.path.join(root, addr, "release")
             self.assertEqual(release.release_dir(addr, root=root), expected)
 
@@ -408,7 +408,7 @@ class TestEnvelopeReadLimit(unittest.TestCase):
         escape_chars = '\\"' * (30 * 1024 // 2)  # 30KB raw, ~60KB+ when JSON-escaped
         body = escape_chars  # within MAX_BODY_BYTES (64KB)
 
-        msg = message.new_message(to=self.address, body=body, from_="1002:other")
+        msg = message.new_message(to=self.address, body=body, from_="1200:other")
         verified_bytes = message.to_json(msg).encode("utf-8")
         # Verify the message body is within limits
         self.assertLessEqual(len(body.encode("utf-8")), MAX_BODY_BYTES)

@@ -3,7 +3,7 @@
 Underpins visibility (f2-07) and the leader-gate (f2-09).
 
 * A **group** = >=2 member addresses (``uid:project``) + one **manager** address (itself a member). E.g.
-  ``roof-coordination = {1001:backend, 1002:reviews}``, manager ``1002:reviews``.
+  ``roof-coordination = {1100:backend, 1200:reviews}``, manager ``1200:reviews``.
 * **Head leader** (``head_leader`` uid, one fixed; ``$MESH_HEAD_LEADER`` override) sees everything
   (monitoring) and may edit anywhere.
 * **Edit rights = manager + head leader, enforced via file ownership/perms** (not via a

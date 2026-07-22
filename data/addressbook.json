@@ -2,19 +2,19 @@
   "$comment": "agentixmesh address book — friendly names/aliases -> uid:project. SENDER-SIDE convenience only; receive-side identity stays kernel-verified (an alias can never forge who a message is from). Layered: this bundled seed < $MESH_ROOT/addressbook.json (shared team) < ~/.config/pm-mesh/addressbook.json (personal). Edit freely; add aliases so several friendly names resolve to the same mailbox. dir = the project's working directory (used by the postbode to know where to run a headless reply). The entries below are EXAMPLES — replace them with your own.",
   "entries": [
     {
-      "address": "1001:backend",
+      "address": "1100:backend",
       "display": "Backend service",
       "dir": "/home/alice/projects/backend",
       "aliases": ["backend", "api", "server"]
     },
     {
-      "address": "1001:frontend",
+      "address": "1100:frontend",
       "display": "Frontend app",
       "dir": "/home/alice/projects/frontend",
       "aliases": ["frontend", "web", "ui"]
     },
     {
-      "address": "1002:reviews",
+      "address": "1200:reviews",
       "display": "Reviewer (colleague account)",
       "dir": "/home/bob/projects/reviews",
       "aliases": ["reviews", "reviewer", "peer"]

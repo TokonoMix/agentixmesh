@@ -17,12 +17,12 @@ from pm_mesh import group_reexec as gr
 
 @pytest.mark.parametrize("argv", [
     [],
-    ["1001:pm-mesh", "hello"],
-    ["1001:x", "a b c"],
-    ["1001:x", "x;whoami", "$(id)", "`reboot`"],
-    ["1001:x", "line1\nline2\twith\ttabs"],
-    ["1001:x", "emoji 🚀 en accenten café"],
-    ["--thread", "abc", "1001:x", ""],
+    ["1100:pm-mesh", "hello"],
+    ["1100:x", "a b c"],
+    ["1100:x", "x;whoami", "$(id)", "`reboot`"],
+    ["1100:x", "line1\nline2\twith\ttabs"],
+    ["1100:x", "emoji 🚀 en accenten café"],
+    ["--thread", "abc", "1100:x", ""],
 ])
 def test_encode_decode_roundtrip(argv):
     enc = gr.encode_argv(argv)
@@ -49,48 +49,48 @@ MESH_GID = 985
 def plan(**kw):
     base = dict(
         reexec_flag="", argv_env="", shared=True, mesh_gid=MESH_GID,
-        current_groups=[1001, 100], argv=["1001:x", "hi"], module=MODULE,
+        current_groups=[1100, 100], argv=["1100:x", "hi"], module=MODULE,
     )
     base.update(kw)
     return gr._plan_reexec(**base)
 
 
 def test_reexec_copy_restores_argv_and_proceeds():
-    enc = gr.encode_argv(["1001:x", "a b", "x;id"])
+    enc = gr.encode_argv(["1100:x", "a b", "x;id"])
     p = plan(reexec_flag="1", argv_env=enc)
-    assert p == {"restore_argv": ["1001:x", "a b", "x;id"]}
+    assert p == {"restore_argv": ["1100:x", "a b", "x;id"]}
 
 
 def test_already_in_group_proceeds_directly():
-    assert plan(current_groups=[1001, MESH_GID, 100]) is None
+    assert plan(current_groups=[1100, MESH_GID, 100]) is None
 
 
 def test_local_root_never_reexecs_even_without_group():
     # same-user / local root needs no group -> must stay byte-identical (no re-exec)
-    assert plan(shared=False, current_groups=[1001]) is None
+    assert plan(shared=False, current_groups=[1100]) is None
 
 
 def test_no_mesh_group_on_host_proceeds():
-    assert plan(mesh_gid=None, current_groups=[1001]) is None
+    assert plan(mesh_gid=None, current_groups=[1100]) is None
 
 
 def test_shared_root_missing_group_plans_sg_reexec():
-    p = plan(shared=True, mesh_gid=MESH_GID, current_groups=[1001, 100],
-             argv=["1001:x", "a b"], module=MODULE)
+    p = plan(shared=True, mesh_gid=MESH_GID, current_groups=[1100, 100],
+             argv=["1100:x", "a b"], module=MODULE)
     assert p is not None and "exec" in p
     assert p["exec"] == ["sg", "mesh", "-c", f"exec python3 -m {MODULE}"]
     # the guard flag + argv are carried through the environment (sg preserves env)
     assert p["env_updates"]["_MESH_SG_REEXEC"] == "1"
-    assert gr.decode_argv(p["env_updates"]["_MESH_ARGV"]) == ["1001:x", "a b"]
+    assert gr.decode_argv(p["env_updates"]["_MESH_ARGV"]) == ["1100:x", "a b"]
 
 
 def test_reexec_flag_takes_precedence_over_missing_group():
     # a re-exec'd copy that STILL lacks the group must NOT loop -> restore & proceed
-    enc = gr.encode_argv(["1001:x"])
-    p = plan(reexec_flag="1", argv_env=enc, current_groups=[1001], mesh_gid=MESH_GID)
-    assert p == {"restore_argv": ["1001:x"]}
+    enc = gr.encode_argv(["1100:x"])
+    p = plan(reexec_flag="1", argv_env=enc, current_groups=[1100], mesh_gid=MESH_GID)
+    assert p == {"restore_argv": ["1100:x"]}
 
 
 def test_module_name_is_reflected_in_sg_command():
-    p = plan(module="pm_mesh.inject", current_groups=[1001])
+    p = plan(module="pm_mesh.inject", current_groups=[1100])
     assert p["exec"][-1] == "exec python3 -m pm_mesh.inject"

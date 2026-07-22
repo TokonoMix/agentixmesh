@@ -288,14 +288,14 @@ class MarkerManifestTest(unittest.TestCase):
         from datetime import datetime, timezone
         path = enroll.write_manifest(
             self.home, package_version="1.0.0", skill_mode="symlink",
-            hook_command="/usr/local/bin/mesh-inject", enrolled_by_uid=1001,
+            hook_command="/usr/local/bin/mesh-inject", enrolled_by_uid=1100,
             now=datetime(2026, 7, 1, 9, 0, 0, tzinfo=timezone.utc),
         )
         data = _json.load(open(path, encoding="utf-8"))
         self.assertEqual(data["package_version"], "1.0.0")
         self.assertEqual(data["skill_mode"], "symlink")
         self.assertEqual(data["hook_command"], "/usr/local/bin/mesh-inject")
-        self.assertEqual(data["enrolled_by_uid"], 1001)
+        self.assertEqual(data["enrolled_by_uid"], 1100)
         self.assertEqual(data["ts_utc"], "2026-07-01T09:00:00Z")
 
 

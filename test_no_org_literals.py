@@ -42,9 +42,15 @@ _ALLOWED_LITERALS = (
     "systeembeheer@interip.nl",   # SECURITY.md: the real disclosure address (set 2026-07-22)
 )
 
-# OPEN — decision D3 (Mes): also ban ticket refs (`int-1234`) and the real uid literals
-# (1001/1003), keeping only synthetic examples (1000:projectA)? Recommended, not yet applied:
-# it would touch a lot of prose and needs one decision, not a guess.
+# Real identifiers from our own machine, banned as REGEXES (decided 2026-07-22). A uid on its
+# own is harmless; together with the rest of the public text it becomes a map of who sits on our
+# machine and in which role. Ticket refs point at a tracker no outside reader can open — noise
+# for them, information for anyone who wants it. Public examples use the synthetic block
+# (1000/1100/1200/1300, `1000:projectA`-style) instead.
+_BANNED_PATTERNS = (
+    (r"(?<![0-9])(994|100[1-4])(?![0-9])", "real uid literal (use 1000/1100/1200/1300 in examples)"),
+    (r"\bint-[0-9]+\b", "internal ticket reference (not resolvable from outside)"),
+)
 
 # Everything publicly visible in the repo is scanned — shipped code, docs, the skill, and the
 # whole test suite (test fixtures leak internal paths just as visibly as prose). Globbed so a
@@ -114,6 +120,26 @@ class NoOrgLiteralsTest(unittest.TestCase):
                     _name_hits(text, banned),
                     f"{path.relative_to(repo)} contains org/personal name {banned!r}",
                 )
+
+    def test_public_surface_has_no_real_uids_or_ticket_refs(self):
+        repo = pathlib.Path(__file__).parent
+        for path in _sources(repo):
+            text = _strip_allowed(path.read_text(encoding="utf-8", errors="replace").lower())
+            for pattern, why in _BANNED_PATTERNS:
+                self.assertFalse(
+                    re.search(pattern, text),
+                    f"{path.relative_to(repo)} contains a {why}",
+                )
+
+    def test_the_uid_and_ticket_patterns_fire(self):
+        """Synthetic proof, so a pattern that silently stopped matching is caught."""
+        uid_re, ticket_re = _BANNED_PATTERNS[0][0], _BANNED_PATTERNS[1][0]
+        self.assertTrue(re.search(uid_re, "address 1001:projects"))
+        self.assertTrue(re.search(uid_re, "uid 1003 reads the inbox"))
+        self.assertFalse(re.search(uid_re, "address 1100:backend"))   # synthetic block is fine
+        self.assertFalse(re.search(uid_re, "a timeout of 10014 ms"))  # embedded digits are not a uid
+        self.assertTrue(re.search(ticket_re, "see int-2555 for context"))
+        self.assertFalse(re.search(ticket_re, "the int-like value"))
 
     def test_the_guard_actually_scans_the_skill(self):
         """Regression: the skill shipped unscanned until 2026-07-22 — pin that it is covered."""
