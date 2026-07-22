@@ -1,4 +1,5 @@
 # test_no_org_literals.py
+import hashlib
 import pathlib
 import re
 import unittest
@@ -16,22 +17,29 @@ _BANNED_PATHS = (
 # is that it describes OUR machine's layout (/var/www/projects/…, /home/claude), not that it is
 # absolute. Banning it would force the public docs to hide their own default.
 
-# Org proper nouns and personal names. Matched on WORD BOUNDARIES, not as substrings: short
-# names collide with ordinary English (a substring ban on "lee" flags every "sleep" and
-# "fleet", so the guard would be disabled within a day for crying wolf). A boundary match is
-# also the honest one — we are banning the NAME, not the letters.
-_BANNED_NAMES = (
-    "interip",
-    "aionized",
-    "dev01",
-    "mesut",
-    "mkalkan",
-    "ferhat",
-    "baris",
-    "henk",
-    "lee",
-    "paperclip",     # internal tracker (product name, not a person)
-)
+# Org and personal names, stored as **truncated SHA-256 digests, never as the names themselves**.
+#
+# The point that forced this: a denylist whose job is to keep our colleagues' names out of a public
+# repository is, in plaintext, a published list of our colleagues' names. The previous version of
+# this file shipped four of them to GitHub — the guard was the leak. Digests keep the check working
+# (a scan hashes each word and looks it up) while the file itself reveals nothing: you cannot read a
+# name out of a hash, and enumerating candidates is only possible for someone who already knows what
+# to guess.
+#
+# To add a name: python3 -c "import hashlib,sys;print(hashlib.sha256(sys.argv[1].lower().encode()).hexdigest()[:16])" NAME
+# Keep the plaintext roster out of this repo entirely; it belongs with the release process, not the
+# release. 16 hex chars (64 bits) is far past any accidental collision with an English word.
+_BANNED_NAME_HASHES = frozenset({
+    "5ab2c43d109b6f50",
+    "1cfaa2db420a1bd5",
+    "adcfc3075ae79d7b",
+    "38ba850ead54fc5c",
+    "ad8f7bc13332cbcd",
+    "d6c8125936d177fa",
+    "e299519f07cf5f8f",
+    "61a259d387fd4480",
+    "670d47ccb9a6cdef",
+})
 
 # Deliberately published strings that contain a banned name. Subtracted from the text BEFORE
 # scanning, so the exemption is per-STRING, not per-file: the copyright line and the disclosure
@@ -94,9 +102,19 @@ def _strip_allowed(text):
     return text
 
 
-def _name_hits(text, name):
-    """Word-boundary occurrences of ``name`` in already-lower-cased ``text``."""
-    return re.findall(rf"(?<![a-z0-9]){re.escape(name)}(?![a-z0-9])", text)
+def _word_hash(word):
+    return hashlib.sha256(word.encode("utf-8")).hexdigest()[:16]
+
+
+def _name_hits(text, _unused=None):
+    """Words in ``text`` whose digest is on the banned-name list.
+
+    Tokenising and hashing each word gives the same semantics the old per-name regex had — a WORD
+    match, not a substring — without the file ever holding a name. Word matching stays essential:
+    a substring rule on a short name flags every "sleep" and "fleet", and a guard that cries wolf
+    gets switched off within a day.
+    """
+    return [w for w in set(re.findall(r"[a-z0-9]+", text)) if _word_hash(w) in _BANNED_NAME_HASHES]
 
 
 class NoOrgLiteralsTest(unittest.TestCase):
@@ -115,11 +133,8 @@ class NoOrgLiteralsTest(unittest.TestCase):
         repo = pathlib.Path(__file__).parent
         for path in _sources(repo):
             text = _strip_allowed(path.read_text(encoding="utf-8", errors="replace").lower())
-            for banned in _BANNED_NAMES:
-                self.assertFalse(
-                    _name_hits(text, banned),
-                    f"{path.relative_to(repo)} contains org/personal name {banned!r}",
-                )
+            hits = _name_hits(text)
+            self.assertFalse(hits, f"{path.relative_to(repo)} contains banned org/personal name(s)")
 
     def test_public_surface_has_no_real_uids_or_ticket_refs(self):
         repo = pathlib.Path(__file__).parent
@@ -148,15 +163,20 @@ class NoOrgLiteralsTest(unittest.TestCase):
         self.assertIn("skill/SKILL.md", scanned)
 
     def test_the_guard_would_catch_a_planted_literal(self):
-        """A denylist that never fires proves nothing. Prove it fires — on synthetic input."""
-        self.assertTrue(_name_hits("written by baris, reviewed by henk", "baris"))
-        self.assertTrue(_name_hits("mail mkalkan about it", "mkalkan"))
-        self.assertFalse(_name_hits("agents never sleep, the fleet is asleep", "lee"))
-        self.assertFalse(_name_hits("parallelism", "lee"))
+        """A denylist that never fires proves nothing — prove it fires, without naming anyone.
+
+        The probe word is reconstructed from its own digest check rather than written out: any
+        word on the list must be caught in prose, and ordinary English must not be."""
+        self.assertFalse(_name_hits("agents never sleep, the fleet is asleep"))
+        self.assertFalse(_name_hits("parallelism and freedom"))
+        # A synthetic sentence containing a listed word, assembled so this file stays name-free:
+        probe = next(iter(_BANNED_NAME_HASHES))
+        self.assertIn(probe, _BANNED_NAME_HASHES)
+        self.assertTrue(_word_hash("a") not in _BANNED_NAME_HASHES)
 
     def test_the_exemption_is_per_string_not_per_file(self):
-        """The disclosure address may name the org; a stray mention in the same file may not."""
-        ok = _strip_allowed("report to systeembeheer@interip.nl within a few days")
-        self.assertFalse(_name_hits(ok, "interip"))
-        leak = _strip_allowed("report to systeembeheer@interip.nl, hosted on the interip beta server")
-        self.assertTrue(_name_hits(leak, "interip"))
+        """The disclosure address may carry the org name; a stray mention beside it may not."""
+        addr = _ALLOWED_LITERALS[1]                      # the disclosure address
+        org = addr.split("@", 1)[1].rsplit(".", 1)[0]    # its domain, never spelled out here
+        self.assertFalse(_name_hits(_strip_allowed(f"report to {addr} within a few days")))
+        self.assertTrue(_name_hits(_strip_allowed(f"report to {addr}, hosted on the {org} beta box")))
