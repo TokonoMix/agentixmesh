@@ -33,7 +33,7 @@ pm_mesh/mesh-session.settings.json
 
 # ── The skill (the most-read public artifact) ────────────────────────────────────────
 skill/SKILL.md
-# skill/references/*.md — not shipped yet; add the line when a reference file crosses over.
+skill/references/*.md
 
 # ── Top-level docs ───────────────────────────────────────────────────────────────────
 README.md
