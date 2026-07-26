@@ -19,14 +19,29 @@ def address(cwd: str | None = None) -> str:
     return config.current_address(cwd)
 
 
+def _own_languages_line(uid) -> str:
+    """Best-effort 'how others should write to you' hint. Never lets a malformed shared or
+    personal address book break the one command whose job is "always tell you your address"."""
+    try:
+        from . import addressbook
+        langs = addressbook.load().languages_for(uid)
+    except Exception:
+        return ""
+    if not langs:
+        return ""
+    return f"  languages (how others should write to you): {', '.join(langs)}\n"
+
+
 def render(cwd: str | None = None) -> str:
     """A short human block: the address plus what each half means and how others reach you."""
     addr = address(cwd)
     uid, project = config.parse_address(addr)
+    langs_line = _own_languages_line(uid)
     return (
         f"your mesh address:  {addr}\n"
         f"  uid {uid}       = your kernel-verified identity (stable, unforgeable — not a guess)\n"
         f"  project '{project}' = this session's working-dir name (changes when you cd elsewhere)\n"
+        f"{langs_line}"
         f"\n"
         f"share it so others can reach you:  mesh-send {addr} \"...\""
     )

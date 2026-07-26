@@ -12,6 +12,10 @@ import sys
 from . import addressbook
 
 
+def _uid_of(address: str) -> str:
+    return address.split(":", 1)[0]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     book = addressbook.load()
@@ -22,8 +26,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args[0] == "--list":
         for e in sorted(book.entries(), key=lambda x: x.address):
-            aliases = ", ".join(e.aliases)
-            print(f"{e.address:40s} {e.display or '-':22s} [{aliases}]")
+            aliases = "[" + ", ".join(e.aliases) + "]"
+            langs = ",".join(book.languages_for(_uid_of(e.address)))
+            print(f"{e.address:40s} {e.display or '-':22s} {aliases:34s} {langs}")
         return 0
 
     addr = book.resolve(args[0])
@@ -31,7 +36,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"mesh-resolve: unknown name/alias: {args[0]!r} "
               f"(mesh-resolve --list shows the book)", file=sys.stderr)
         return 1
-    print(addr)
+    print(addr)  # stdout — bare address, machine-readable (unchanged contract)
+    langs = book.languages_for(_uid_of(addr))
+    if langs:
+        print(f"prefers: {', '.join(langs)} -> write in {langs[0]}", file=sys.stderr)
     return 0
 
 
