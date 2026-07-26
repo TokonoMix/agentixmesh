@@ -4,14 +4,15 @@ langs column.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
 
 def _run(*args):
+    env = {**os.environ, "MESH_ROOT": "/nonexistent-root-so-only-seed-loads"}
     return subprocess.run([sys.executable, "-m", "pm_mesh.resolve", *args],
-                          capture_output=True, text=True,
-                          env={"MESH_ROOT": "/nonexistent-root-so-only-seed-loads", "PATH": "/usr/bin:/bin"})
+                          capture_output=True, text=True, env=env)
 
 
 def test_single_resolve_stdout_is_bare_address():

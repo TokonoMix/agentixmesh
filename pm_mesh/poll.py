@@ -19,7 +19,6 @@ from . import config, fastmode
 
 # Exit codes
 EX_OK = 0
-EX_USAGE = 2
 
 
 def _fastmode_cli(argv) -> int:
@@ -57,8 +56,7 @@ def main(argv=None) -> int:
         return _fastmode_cli(argv[1:])
     p = argparse.ArgumentParser(prog="mesh-poll", description="mesh-poll fastmode state CLI")
     p.add_argument("command", choices=["fastmode"])
-    p.parse_args(argv)  # empty/unknown command -> argparse usage error, exit 2
-    return EX_USAGE
+    p.parse_args(argv)  # empty/unknown command -> argparse usage error (SystemExit(2))
 
 
 if __name__ == "__main__":  # pragma: no cover
