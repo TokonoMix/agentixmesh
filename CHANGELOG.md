@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-07-26
+
+DX-focused sync. No change to the trust invariants (human-gate, body-withholding,
+kernel-verified identity).
+
+### Added
+- Friendly addressing (address book + `mesh-resolve`/`mesh-who`/`mesh-whoami`), per-recipient
+  language routing, a documented quick-reply polling mode (`snel-modus`/fast-mode).
+
+### Changed
+- Slimmer skill doc (load-on-demand references).
+
 ## [1.1.2] — 2026-07-08
 
 Cross-user hardening & hygiene. No change to the trust invariants (human-gate,
@@ -105,6 +117,7 @@ First public release: the **same-user, single-machine** core.
 - This release is **same-user only**. Cross-user and cross-machine operation is a
   separate, security-gated layer in private beta — see `docs/SCALING.md`.
 
+[1.2.0]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.2.0
 [1.1.2]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.1.2
 [1.1.1]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.1.1
 [1.1.0]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.1.0
