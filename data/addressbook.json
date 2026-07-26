@@ -1,5 +1,10 @@
 {
   "$comment": "agentixmesh address book — friendly names/aliases -> uid:project. SENDER-SIDE convenience only; receive-side identity stays kernel-verified (an alias can never forge who a message is from). Layered: this bundled seed < $MESH_ROOT/addressbook.json (shared team) < ~/.config/pm-mesh/addressbook.json (personal). Edit freely; add aliases so several friendly names resolve to the same mailbox. dir = the project's working directory (used by the postbode to know where to run a headless reply). The entries below are EXAMPLES — replace them with your own.",
+  "$languages_comment": "Per-PERSON (uid) language preference, ordered most-preferred first (ISO-639-1). Compose mesh messages to someone in their #1 language; never a language not in their list. EXAMPLES — replace with your own.",
+  "languages": {
+    "1100": ["en"],
+    "1200": ["en", "es"]
+  },
   "entries": [
     {
       "address": "1100:backend",

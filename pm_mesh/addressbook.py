@@ -64,23 +64,32 @@ def _safe_mesh_root() -> str:
         return os.environ.get("MESH_ROOT", "")
 
 
-def _load_file(path: str) -> list[dict]:
+def _load_file(path: str) -> dict:
+    """Return the raw layer ``{"entries": [...], "languages": {...}}``. Both keys defaulted so a
+    missing/typed-wrong value degrades to empty rather than raising — and a bad ``languages`` block
+    never discards the file's ``entries`` (they are read independently)."""
+    empty = {"entries": [], "languages": {}}
     if not path or not os.path.isfile(path):
-        return []
+        return empty
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except Exception:
-        return []
-    entries = data.get("entries", []) if isinstance(data, dict) else []
-    return entries if isinstance(entries, list) else []
+        return empty
+    if not isinstance(data, dict):
+        return empty
+    entries = data.get("entries", [])
+    languages = data.get("languages", {})
+    return {"entries": entries if isinstance(entries, list) else [],
+            "languages": languages if isinstance(languages, dict) else {}}
 
 
 class AddressBook:
     """Resolved, merged view of the layered address-book files."""
 
-    def __init__(self, entries: dict[str, Entry]):
+    def __init__(self, entries: dict[str, Entry], languages: dict[str, list[str]] | None = None):
         self._by_address = entries
+        self._languages = languages or {}
         self._alias_index: dict[str, str] = {}
         for addr, e in entries.items():
             self._alias_index[_norm(addr)] = addr
@@ -112,6 +121,11 @@ class AddressBook:
     def entries(self) -> list[Entry]:
         return list(self._by_address.values())
 
+    def languages_for(self, uid: int | str) -> list[str]:
+        """Ordered language codes for a person (uid), or ``[]`` if unknown. Policy-free: the
+        'unknown -> English' default is the caller's, so ``[]`` stays distinct from ``['en']``."""
+        return list(self._languages.get(str(uid), []))
+
 
 def merge_entries(layers: list[list[dict]]) -> dict[str, Entry]:
     """Merge raw entry-lists from low to high priority. Same address across
@@ -134,6 +148,115 @@ def merge_entries(layers: list[list[dict]]) -> dict[str, Entry]:
     return out
 
 
+def merge_languages(layers: list[dict]) -> dict[str, list[str]]:
+    """Merge per-uid ordered language lists low->high. A higher layer's NON-EMPTY list REPLACES the
+    uid's list (order is meaningful — no union). An empty/malformed value is ignored (kept from the
+    lower layer), never a replace-with-empty. Keys canonicalised to ``str``; codes lowercased/trimmed."""
+    out: dict[str, list[str]] = {}
+    for layer in layers:
+        if not isinstance(layer, dict):
+            continue
+        for uid, langs in layer.items():
+            if not isinstance(langs, list):
+                continue
+            clean = [c.strip().lower() for c in langs if isinstance(c, str) and c.strip()]
+            if clean:
+                out[str(uid)] = clean
+    return out
+
+
 def load(mesh_root: str | None = None) -> AddressBook:
-    layers = [_load_file(p) for p in _layer_paths(mesh_root)]
-    return AddressBook(merge_entries(layers))
+    raw = [_load_file(p) for p in _layer_paths(mesh_root)]
+    entries = merge_entries([r["entries"] for r in raw])
+    languages = merge_languages([r["languages"] for r in raw])
+    return AddressBook(entries, languages)
+
+
+def upsert_entry(address, *, display="", dir="", aliases=None, note="",
+                 book_path):
+    """Add or extend one entry in the book file at ``book_path``, in place.
+
+    Merge-never-overwrite: an upsert can only ADD information. A new address is
+    appended; an existing one gets its EMPTY scalar fields filled and its alias
+    list unioned (case-insensitive, existing order first) — a non-empty
+    ``display``/``dir``/``$note`` a steward already wrote is never replaced. This
+    mirrors the read-side layering (a later layer extends, it never elevates) and
+    keeps the book sender-side convenience only: nothing here touches receive-side
+    identity, which stays kernel-verified.
+
+    Returns ``{"created": bool, "updated_fields": [...]}``. Raises ``ValueError``
+    on a malformed address or an unparseable existing file, leaving the file
+    byte-for-byte untouched (a human inspects a corrupt book; we never clobber it).
+    """
+    address = (address or "").strip()
+    if not _ADDRESS_RE.match(address):
+        raise ValueError(f"malformed address: {address!r} (want <uid>:<project>)")
+    aliases = list(aliases or [])
+
+    if os.path.isfile(book_path):
+        try:
+            with open(book_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except Exception as exc:
+            raise ValueError(f"cannot parse existing book {book_path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ValueError(f"existing book {book_path} is not a JSON object")
+    else:
+        data = {}
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        entries = []
+        data["entries"] = entries
+
+    existing = None
+    for e in entries:
+        if isinstance(e, dict) and (e.get("address") or "").strip() == address:
+            existing = e
+            break
+
+    updated_fields = []
+    if existing is None:
+        entry = {"address": address}
+        if display:
+            entry["display"] = display
+        if dir:
+            entry["dir"] = dir
+        if note:
+            entry["$note"] = note
+        entry["aliases"] = _dedup_aliases([], aliases)
+        entries.append(entry)
+        created = True
+    else:
+        created = False
+        if display and not (existing.get("display") or "").strip():
+            existing["display"] = display
+            updated_fields.append("display")
+        if dir and not (existing.get("dir") or "").strip():
+            existing["dir"] = dir
+            updated_fields.append("dir")
+        if note and not (existing.get("$note") or "").strip():
+            existing["$note"] = note
+            updated_fields.append("$note")
+        merged = _dedup_aliases(existing.get("aliases") or [], aliases)
+        if merged != (existing.get("aliases") or []):
+            existing["aliases"] = merged
+            updated_fields.append("aliases")
+
+    tmp = book_path + ".tmp"
+    os.makedirs(os.path.dirname(book_path) or ".", exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    os.replace(tmp, book_path)
+    return {"created": created, "updated_fields": updated_fields}
+
+
+def _dedup_aliases(existing, incoming):
+    """Union, case-insensitive, existing order first."""
+    out = list(existing)
+    seen = {_norm(a) for a in out if isinstance(a, str)}
+    for a in incoming:
+        if isinstance(a, str) and _norm(a) not in seen:
+            out.append(a)
+            seen.add(_norm(a))
+    return out
