@@ -1,6 +1,6 @@
-"""Per-session presence/heartbeat (f2-06): inject refreshes a heartbeat; is_online is deterministic.
+"""Presence/heartbeat per session (f2-06): inject refreshes a heartbeat; is_online is deterministic.
 
-Fail-open: an error in the presence layer must never break inject delivery (exit 0, message still shown).
+Fail-open: an error in the presence layer must never break inject delivery (exit 0, message shown anyway).
 """
 
 import io
@@ -24,8 +24,12 @@ def _iso(epoch):
 
 def _run_inject(root):
     out, err = io.StringIO(), io.StringIO()
+    # In the real hook, presence.session_pid() walks up to the long-lived agent process; under the
+    # test runner that ancestor is the actual claude session, so pin it to this (alive) test pid so
+    # the heartbeat file is `<getpid>.json` and the downstream prune/refresh assertions hold.
     with mock.patch("os.getuid", return_value=REAL_UID), \
-         mock.patch("os.getcwd", return_value="/home/user/gallery"), \
+         mock.patch("os.getcwd", return_value="/home/alice/gallery"), \
+         mock.patch("pm_mesh.presence.session_pid", return_value=os.getpid()), \
          mock.patch.dict(os.environ, {"MESH_ROOT": root}, clear=False):
         with redirect_stdout(out), redirect_stderr(err):
             rc = inject.main()
@@ -62,9 +66,13 @@ class HeartbeatWriteTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = self.tmp.name
 
-    def test_heartbeat_has_required_fields(self):
+    def test_heartbeat_records_the_session_pid(self):
+        # heartbeat must record the SESSION pid from presence.session_pid(), NOT the caller's pid —
+        # a sentinel proves the wiring (the file is named for that pid too).
+        SESSION = 4242424
         with mock.patch("os.getuid", return_value=REAL_UID), \
-             mock.patch("os.getcwd", return_value="/home/user/gallery"):
+             mock.patch("os.getcwd", return_value="/home/alice/gallery"), \
+             mock.patch("pm_mesh.presence.session_pid", return_value=SESSION):
             path = presence.heartbeat(root=self.root, now="2026-06-26T00:00:00Z")
         with open(path, encoding="utf-8") as fh:
             hb = json.load(fh)
@@ -72,17 +80,32 @@ class HeartbeatWriteTest(unittest.TestCase):
             self.assertIn(field, hb)
         self.assertEqual(hb["user"], REAL_UID)
         self.assertEqual(hb["project"], "gallery")
-        self.assertEqual(hb["pid"], os.getpid())
+        self.assertEqual(hb["pid"], SESSION, "records the session pid, not the hook-subprocess pid")
+        self.assertTrue(path.endswith(f"{SESSION}.json"), "heartbeat file is named for the session pid")
         self.assertEqual(hb["last_seen"], "2026-06-26T00:00:00Z")
+
+    def test_heartbeat_uses_provided_session_cwd_not_process_cwd(self):
+        # The hook can run with a different cwd than the session (a background sweep from /tmp). heartbeat
+        # must tag the SESSION's address from the passed cwd — else it mis-tags presence under project
+        # 'tmp', the occupancy gates find no owner, and a live inbox gets drained (the open gap #4a).
+        with mock.patch("os.getuid", return_value=REAL_UID), \
+             mock.patch("os.getcwd", return_value="/tmp"), \
+             mock.patch("pm_mesh.presence.session_pid", return_value=os.getpid()):
+            path = presence.heartbeat(root=self.root, now="2026-06-26T00:00:00Z",
+                                      cwd="/home/alice/projects/backend")
+        with open(path, encoding="utf-8") as fh:
+            hb = json.load(fh)
+        self.assertEqual(hb["project"], "backend", "tags the session cwd's project, not /tmp")
+        self.assertEqual(hb["cwd"], "/home/alice/projects/backend")
 
     def test_started_preserved_across_turns(self):
         with mock.patch("os.getuid", return_value=REAL_UID), \
-             mock.patch("os.getcwd", return_value="/home/user/gallery"):
+             mock.patch("os.getcwd", return_value="/home/alice/gallery"):
             presence.heartbeat(root=self.root, now="2026-06-26T00:00:00Z")
             path = presence.heartbeat(root=self.root, now="2026-06-26T00:05:00Z")
         with open(path, encoding="utf-8") as fh:
             hb = json.load(fh)
-        self.assertEqual(hb["started"], "2026-06-26T00:00:00Z", "started stays at the first turn")
+        self.assertEqual(hb["started"], "2026-06-26T00:00:00Z", "started stays the first turn's value")
         self.assertEqual(hb["last_seen"], "2026-06-26T00:05:00Z", "last_seen follows the latest turn")
 
     def test_inject_refreshes_heartbeat(self):
@@ -92,7 +115,7 @@ class HeartbeatWriteTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(hb_path), "inject wrote the heartbeat")
 
     def test_inject_fail_open_when_presence_breaks(self):
-        # presence.heartbeat raises → delivery continues (message still shown, exit 0).
+        # presence.heartbeat raises -> delivery continues (message still shown, exit 0).
         maildir.maildrop(ADDR, root=self.root)
         msg = message.new_message(ADDR, "HB-FAILOPEN-MARK", from_=f"{REAL_UID}:peer")
         maildir.deliver(msg, root=self.root)
@@ -123,7 +146,7 @@ class PruneStaleTest(unittest.TestCase):
     def _dead_pid(self):
         import subprocess
         p = subprocess.Popen(["true"])
-        p.wait()  # reaped → pid is dead
+        p.wait()  # reaped -> pid is dead
         self.assertFalse(presence._pid_alive(p.pid), "test assumption: pid is dead after wait/reap")
         return p.pid
 
@@ -133,12 +156,12 @@ class PruneStaleTest(unittest.TestCase):
         self.assertFalse(os.path.exists(path))
 
     def test_live_fresh_kept(self):
-        path = self._write(os.getpid(), self.now)  # live pid + fresh → stays
+        path = self._write(os.getpid(), self.now)  # live pid + fresh -> stays
         self.assertEqual(presence.prune_stale(root=self.root, now=self.now), 0)
         self.assertTrue(os.path.exists(path))
 
     def test_old_removed_even_if_pid_alive(self):
-        # Fallback: live (possibly reused) pid but last_seen > TTL → clean up anyway.
+        # Fallback: live (possibly reused) pid but last_seen > TTL -> clean up anyway.
         path = self._write(os.getpid(), self.now - 2 * presence.PRUNE_TTL_S)
         self.assertEqual(presence.prune_stale(root=self.root, now=self.now), 1)
         self.assertFalse(os.path.exists(path))
@@ -153,12 +176,12 @@ class PruneStaleTest(unittest.TestCase):
     def test_non_json_left_alone(self):
         keep = os.path.join(self.dir, "readme.txt")
         with open(keep, "w", encoding="utf-8") as fh:
-            fh.write("no heartbeat")
+            fh.write("not a heartbeat")
         presence.prune_stale(root=self.root, now=self.now)
-        self.assertTrue(os.path.exists(keep), "non-.json files are not touched")
+        self.assertTrue(os.path.exists(keep), "non-.json files are left untouched")
 
     def test_inject_prunes_dead_heartbeat(self):
-        # End-to-end: an inject turn cleans up a dead-pid heartbeat AND keeps its own (fresh).
+        # End-to-end: an inject turn cleans up a dead-pid heartbeat and keeps its own (fresh) one.
         dead = self._dead_pid()
         self._write(dead, self.now)
         rc, _ = _run_inject(self.root)
@@ -166,7 +189,22 @@ class PruneStaleTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.dir, f"{dead}.json")),
                          "inject janitor cleaned up the dead heartbeat")
         self.assertTrue(os.path.exists(os.path.join(self.dir, f"{os.getpid()}.json")),
-                        "its own fresh heartbeat remains")
+                        "the own fresh heartbeat remains")
+
+
+class PresenceDirStickyBitTest(unittest.TestCase):
+    """POST-B-01 §1e: the cross-user presence dir must carry the sticky bit (defense-in-depth) so
+    only owners can rename/delete their own heartbeat, like the maildir dropbox."""
+
+    def test_cross_user_presence_dir_has_sticky_bit(self):
+        import stat
+        from pm_mesh import config
+        with tempfile.TemporaryDirectory() as root, \
+             mock.patch.object(config, "cross_user_enabled", return_value=True), \
+             mock.patch("pm_mesh.maildir._mesh_gid", return_value=os.getgid()):
+            d = presence.presence_dir(root)
+            mode = os.stat(d).st_mode
+            self.assertTrue(mode & stat.S_ISVTX, "presence dir must carry the sticky bit cross-user")
 
 
 if __name__ == "__main__":

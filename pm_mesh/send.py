@@ -8,11 +8,66 @@ permission logic: that's phase 2.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 import os
 
 from . import audit, config, maildir, message
+
+
+def _warn_if_dead_from(from_addr: str) -> None:
+    """Dead-from advisory: warn on stderr when replies to ``from_addr`` would likely never be seen.
+
+    The from-label is basename(cwd) at send time; a shell cwd that drifted away from the session
+    dir stamps a from-label no session is reading, and the receiver's reply-with line then points
+    at that dead address — the reply is lost with no error on either side. Two tiers:
+
+    * **Tier 1 (cwd-drift, precise):** this process runs under a live agent session whose presence
+      heartbeat records the session's REAL address. A differing cwd-derived label is drift — warn
+      even when the dead mailbox exists (a stray reply may have auto-created it). A MATCHING
+      heartbeat means the address is live: no warning, regardless of mailbox state.
+    * **Tier 2 (fallback):** no heartbeat for this process chain (cron, plain terminal) — warn
+      only when the from-address has no mailbox at all (nobody provisioned it, so most likely
+      nobody will read it either).
+
+    Best-effort and advisory only: stderr only, never raises, never changes the send outcome.
+    """
+    try:
+        from . import presence
+
+        uid, project = config.parse_address(from_addr)
+        hb_path = os.path.join(presence.presence_dir(), f"{presence.session_pid()}.json")
+        record = None
+        try:
+            with open(hb_path, encoding="utf-8") as fh:
+                record = json.load(fh)
+        except (OSError, ValueError):
+            record = None
+        if (
+            isinstance(record, dict)
+            and record.get("user") == uid          # same pid but another uid = not our session
+            and isinstance(record.get("project"), str)
+        ):
+            if record["project"] != project:
+                session_addr = f"{uid}:{record['project']}"
+                print(
+                    f"mesh-send: warning: cwd-drift — from-address {from_addr} comes from your "
+                    f"shell cwd, but this session lives at {session_addr}. Replies follow the "
+                    f"from-label to {from_addr}, which no session is reading (silent loss). "
+                    f"cd back to your session dir, or ask the receiver to reply to {session_addr}.",
+                    file=sys.stderr,
+                )
+            return  # matching heartbeat → live address, nothing to warn about
+        if not os.path.isdir(os.path.join(config.mesh_root(), from_addr)):
+            print(
+                f"mesh-send: warning: from-address {from_addr} has no mailbox — a reply would "
+                f"land where nobody is reading (silent loss). Check your cwd (mesh-whoami) "
+                f"before sends that need an answer.",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # advisory only — a broken check must never break a send
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -75,6 +130,9 @@ def main(argv=None) -> int:
     except OSError as exc:
         print(f"mesh-send: delivery failed: {exc}", file=sys.stderr)
         return 1
+
+    # Delivered — advise (stderr, non-blocking) when replies to our from-label would be lost.
+    _warn_if_dead_from(msg.from_)
 
     # Central audit (f2-15) — no body text, best-effort.
     audit.append(

@@ -1,6 +1,6 @@
 """Presence/heartbeat per session (phase 2, f2-06) — design §6.
 
-Every active session writes **per inject turn** a heartbeat file
+Every active session writes a heartbeat file **per inject turn**
 ``{user, project, cwd, pid, started, last_seen}`` in ``<mesh-root>/presence/``. A session whose
 ``last_seen`` is older than a threshold counts as **offline** (``is_online`` — pure, deterministically
 testable with an injectable ``now``). Heartbeat timing metadata is an **accepted leak** (design
@@ -19,11 +19,19 @@ from datetime import datetime, timezone
 
 from . import config
 
-#: Subdirectory under the mesh root with the per-session heartbeats.
+#: Subdirectory under the mesh root holding the per-session heartbeats.
 PRESENCE_SUBDIR = "presence"
 
 #: Default offline threshold in seconds (~2x a generous turn interval). Adjustable per ``is_online`` call.
 DEFAULT_MAX_AGE_S = 600
+
+#: Stall threshold (seconds): a live pid whose heartbeat is older than this has stopped taking turns
+#: for longer than any plausible tool-loop — it is ``stalled`` (hung on a prompt / trust dialog), not
+#: merely ``busy``. Field incident 2026-07-22: five sessions hung ~8h on an unattended dialog and
+#: every check read them ``busy``. 30 min is comfortably past a real tool-loop (a test run, an
+#: install) yet far below the 24h prune, so a genuine long job is not mislabelled while an
+#: hours-long stall is. Overridable per call (an unattended responder may want it tighter).
+STALL_S = 1800
 
 _ISO_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -48,7 +56,7 @@ def presence_dir(root=None) -> str:
         os.makedirs(path, exist_ok=True)
     if config.cross_user_enabled():
         try:
-            os.chmod(path, 0o2775)
+            os.chmod(path, 0o3775)   # 2775 + sticky (S_ISVTX): only owners rename/delete their heartbeat
         except OSError:
             pass
         try:
@@ -70,19 +78,93 @@ def _heartbeat_path(directory: str, pid: int) -> str:
     return os.path.join(directory, f"{pid}.json")
 
 
-def heartbeat(root=None, now=None) -> str:
+# --- session pid resolution (bugfix 2026-07-15) -------------------------------------------
+# heartbeat() runs inside the short-lived inject-hook SUBPROCESS, whose pid dies the moment the
+# hook returns. Recording THAT pid makes every liveness/occupancy check (session_state "busy",
+# prune_stale, the unattended-responder stand-down) see a DEAD pid within a second — so a live session goes
+# invisible in `mesh-who` and its inbox is wrongly treated as unoccupied (the coordinator's bug
+# report + the parked presence stand-down gap). Instead we record the pid of the long-lived AGENT
+# SESSION process (the `claude`/`codex`/… process this hook is a descendant of), found by walking
+# up the parent chain. Harness-agnostic; falls back to the caller's own pid when no agent ancestor
+# is identifiable (unknown harness / no /proc) — never worse than the old behavior.
+
+# Matched EXACTLY on comm (the process NAME), never as a cmdline substring: an intermediate shell
+# whose cmdline merely contains "/home/alice/..." (e.g. the shell-snapshot bash) must NOT match.
+_AGENT_COMMS = {"claude", "codex", "gemini", "copilot", "cursor", "windsurf"}
+# Strong cmdline tokens for harnesses that run under a generic interpreter comm (e.g. node) — these
+# are binary identifiers, not incidental path components, so they don't fire on a "/home/alice" path.
+_AGENT_CMD_TOKENS = ("claude-code", "anthropic.claude", "codex-cli", "codex exec",
+                     "gemini-cli", "@google/gemini", "@github/copilot", "cursor-agent")
+_PROC_WALK_MAX = 64
+
+
+def _read_proc(pid):
+    """``(ppid:int, comm:str, cmdline:str)`` for ``pid`` from /proc, or ``None`` if unreadable.
+
+    Parses /proc/<pid>/stat robustly: comm is parenthesised and may itself contain spaces or a
+    ``)``, so split on the LAST ``)``; ppid is the 2nd whitespace token after it. cmdline is
+    best-effort (NUL-separated argv joined with spaces)."""
+    try:
+        with open(f"/proc/{int(pid)}/stat", encoding="utf-8", errors="replace") as fh:
+            raw = fh.read()
+        rp = raw.rindex(")")
+        comm = raw[raw.index("(") + 1:rp]
+        ppid = int(raw[rp + 2:].split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+    cmdline = ""
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", encoding="utf-8", errors="replace") as fh:
+            cmdline = fh.read().replace("\x00", " ").strip()
+    except OSError:
+        pass
+    return ppid, comm, cmdline
+
+
+def _is_agent_proc(comm, cmdline) -> bool:
+    if (comm or "").strip() in _AGENT_COMMS:
+        return True
+    c = cmdline or ""
+    return any(tok in c for tok in _AGENT_CMD_TOKENS)
+
+
+def session_pid(start_pid=None, read_proc=_read_proc) -> int:
+    """The pid of the nearest agent-session ancestor of ``start_pid`` (default: this process), or
+    ``start_pid`` itself when none is identifiable. Bounded and cycle-safe."""
+    start = int(start_pid) if start_pid is not None else os.getpid()
+    cur, seen = start, set()
+    for _ in range(_PROC_WALK_MAX):
+        if cur <= 1 or cur in seen:
+            break
+        seen.add(cur)
+        info = read_proc(cur)
+        if info is None:
+            break
+        ppid, comm, cmdline = info
+        if _is_agent_proc(comm, cmdline):
+            return cur
+        cur = ppid
+    return start
+
+
+def heartbeat(root=None, now=None, cwd=None) -> str:
     """Write/refresh the heartbeat file of the current session; return the path.
 
     ``started`` is preserved across turns (read from an existing file); ``last_seen`` = now.
-    Atomic (temp + ``os.replace``). ``now`` (ISO string) injectable for tests.
+    Atomic (temp + ``os.replace``). ``now`` (ISO string) injectable for tests. ``cwd`` is the
+    SESSION working dir (the hook may run from a different cwd than the session — e.g. a
+    background sweep from ``/tmp``); pass it so the heartbeat is tagged under the session's real
+    address, not ``basename(os.getcwd())``. Defaults to ``os.getcwd()`` (Claude Code / manual runs
+    unchanged).
     """
     ts = now if now is not None else _utc_now_iso()
     base = root if root is not None else config.mesh_root()
     directory = presence_dir(base)
-    pid = os.getpid()
+    pid = session_pid()  # the long-lived SESSION pid, not the short-lived hook-subprocess pid
     path = _heartbeat_path(directory, pid)
 
-    uid, project = config.parse_address(config.current_address())
+    session_cwd = cwd if cwd is not None else os.getcwd()
+    uid, project = config.parse_address(config.current_address(session_cwd))
 
     started = ts
     try:
@@ -91,12 +173,12 @@ def heartbeat(root=None, now=None) -> str:
         if isinstance(prev, dict) and isinstance(prev.get("started"), str):
             started = prev["started"]
     except (OSError, ValueError):
-        pass  # no/unreadable previous file -> started = now
+        pass  # no/unreadable previous file -> start = now
 
     record = {
         "user": uid,
         "project": project,
-        "cwd": os.getcwd(),
+        "cwd": session_cwd,
         "pid": pid,
         "started": started,
         "last_seen": ts,
@@ -119,17 +201,17 @@ def heartbeat(root=None, now=None) -> str:
     return path
 
 
-#: TTL for heartbeat GC (fallback). A heartbeat with ``last_seen`` older than this gets cleaned up
-#: regardless — even if its pid happens to be alive again (through reuse), or if the record is
-#: corrupt. A **dead** pid is cleaned up immediately, regardless of age. Set generously (24h) so
-#: an idle-but-alive session doesn't prematurely disappear from ``who``.
+#: TTL for heartbeat GC (fallback). A heartbeat with ``last_seen`` older than this is cleaned up
+#: regardless — even if its pid (through reuse) happens to be alive again, or if the record is corrupt.
+#: A **dead** pid is cleaned up immediately, regardless of age. Chosen generously (24h) so that an
+#: idle-but-alive session doesn't prematurely disappear from ``who``.
 PRUNE_TTL_S = 86400
 
 
 def _pid_alive(pid) -> bool:
-    """``True`` if process ``pid`` (probably) is alive. ``signal 0`` touches nothing: ``ESRCH`` ->
-    dead; ``EPERM`` (process of a different user) -> alive. When in doubt -> alive (never clean up
-    on uncertainty; the TTL fallback catches genuinely-old records)."""
+    """``True`` if process ``pid`` is (probably) alive. ``signal 0`` touches nothing: ``ESRCH`` ->
+    dead; ``EPERM`` (process of another user) -> alive. When in doubt -> alive (never clean up on
+    uncertainty; the TTL fallback catches genuinely stale records)."""
     try:
         os.kill(int(pid), 0)
         return True
@@ -146,11 +228,11 @@ def prune_stale(root=None, now: float = None, max_age_s: int = PRUNE_TTL_S) -> i
 
     Remove a heartbeat if (a) its ``pid`` is no longer alive (the session is gone) **or** (b)
     ``last_seen`` is older than ``max_age_s`` (fallback against pid reuse/corruption). A **live,
-    fresh** session — including the current one, which just wrote its heartbeat — stays put.
+    fresh** session — including the current one, which just wrote its heartbeat — stays.
 
     **Best-effort + fail-open** (like this whole layer): an unreadable/unremovable file (e.g. from
-    another user in cross-user) is skipped, never a crash. Meant to run every inject turn (the
-    janitor), so ``presence/`` doesn't fill up unboundedly with dead sessions."""
+    another user in cross-user) is skipped, never a crash. Meant to run on every inject turn (the
+    janitor), so that ``presence/`` doesn't fill up unboundedly with dead sessions."""
     nowf = now if now is not None else datetime.now(timezone.utc).timestamp()
     try:
         directory = presence_dir(root)
@@ -200,3 +282,41 @@ def is_online(heartbeat_record, now: float, max_age_s: int = DEFAULT_MAX_AGE_S) 
     except (ValueError, TypeError):
         return False
     return (now - epoch) <= max_age_s
+
+
+def session_state(heartbeat_record, now: float,
+                  fresh_s: int = DEFAULT_MAX_AGE_S, prune_s: int = PRUNE_TTL_S,
+                  stall_s: int = STALL_S) -> str:
+    """Classify a session's liveness for display (pure). MR-01 + stall (2026-07-22).
+
+    * ``"online"``  — ``last_seen`` within ``fresh_s`` (a fresh heartbeat; definitely turn-taking).
+    * ``"busy"``    — heartbeat older than ``fresh_s`` but within ``stall_s`` AND pid alive: a live
+      session in a real tool-loop (a test run, an install) that hasn't re-stamped its heartbeat.
+    * ``"stalled"`` — pid alive but the heartbeat is older than ``stall_s`` (yet within ``prune_s``):
+      the process is up but has taken no turn for longer than any plausible tool-loop. This is the
+      hung-on-a-prompt / trust-dialog case (field incident 2026-07-22, five sessions ~8h). "Process
+      alive, taking no turns" — distinct from ``busy`` precisely because a consumer (a waiting peer,
+      an unattended responder deciding whether to answer on this session's behalf) must NOT treat it as live.
+    * ``"offline"`` — pid dead, ``last_seen`` beyond ``prune_s``, or missing/unparseable (fail-closed).
+
+    pid-liveness is the **primary** signal (same-machine ground truth); heartbeat age splits
+    online / busy / stalled. The heartbeat is written only on the inject hook, i.e. once per TURN,
+    so "no fresh heartbeat despite a live pid" is exactly "taking no turns" — the older that is, the
+    more it is a stall rather than a loop.
+    """
+    last = heartbeat_record.get("last_seen") if isinstance(heartbeat_record, dict) else None
+    if not isinstance(last, str):
+        return "offline"
+    try:
+        age = now - _iso_to_epoch(last)
+    except (ValueError, TypeError):
+        return "offline"
+    if age <= fresh_s:
+        return "online"
+    pid = heartbeat_record.get("pid")
+    # pid-liveness is the primary signal, so a record with NO pid cannot be live — treat missing
+    # pid as not-alive (mirrors ``prune_stale``'s guard; ``_pid_alive`` would otherwise fail OPEN on
+    # ``int(None)`` and wrongly show a pid-less stale record as live).
+    if age <= prune_s and pid is not None and _pid_alive(pid):
+        return "busy" if age <= stall_s else "stalled"
+    return "offline"

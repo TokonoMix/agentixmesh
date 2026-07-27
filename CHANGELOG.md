@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-07-27
+
+Reliability sync. No change to the trust invariants (human-gate, body-withholding,
+kernel-verified identity).
+
+### Added
+- **Dead-from advisory in `mesh-send` (cwd-drift detection).** The from-label is
+  basename(shell cwd) at send time; a `cd` that persisted in the tool shell stamps sends
+  with an address no session is reading, and the frame's reply-with line steers the reply
+  into that dead mailbox — silent loss on both sides. `mesh-send` now warns on stderr:
+  precise tier compares the cwd-derived label against the live session's presence heartbeat
+  (fires even when a stray reply already auto-created the dead mailbox); fallback tier
+  (no heartbeat — cron/terminal) warns when the from-address has no mailbox at all.
+  Advisory only: exit code, stdout (the message id) and delivery are unchanged, and any
+  internal error in the check is swallowed.
+
+### Fixed
+- **Presence heartbeats now record the long-lived agent-session pid** (parent-chain walk,
+  harness-agnostic) instead of the short-lived hook subprocess pid — previously a live
+  session could look dead to liveness checks within a second of the hook returning. Also
+  tags the heartbeat under the session's real address when the hook runs from a different
+  cwd, and hardens stale-heartbeat pruning (dead pid → immediate, TTL fallback for the rest).
+
 ## [1.2.0] — 2026-07-26
 
 DX-focused sync. No change to the trust invariants (human-gate, body-withholding,
@@ -117,6 +140,7 @@ First public release: the **same-user, single-machine** core.
 - This release is **same-user only**. Cross-user and cross-machine operation is a
   separate, security-gated layer in private beta — see `docs/SCALING.md`.
 
+[1.3.0]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.3.0
 [1.2.0]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.2.0
 [1.1.2]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.1.2
 [1.1.1]: https://github.com/TokonoMix/agentixmesh/releases/tag/v1.1.1
