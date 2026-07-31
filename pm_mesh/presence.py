@@ -164,20 +164,30 @@ def heartbeat(root=None, now=None, cwd=None) -> str:
     path = _heartbeat_path(directory, pid)
 
     session_cwd = cwd if cwd is not None else os.getcwd()
-    uid, project = config.parse_address(config.current_address(session_cwd))
+    uid, base_project = config.parse_address(config.current_address(session_cwd))
 
     started = ts
+    prev = None
     try:
         with open(path, encoding="utf-8") as fh:
             prev = json.load(fh)
         if isinstance(prev, dict) and isinstance(prev.get("started"), str):
             started = prev["started"]
     except (OSError, ValueError):
-        pass  # no/unreadable previous file -> start = now
+        prev = None  # no/unreadable previous file -> start = now
+
+    # Path-qualified addressing: under a live same-basename collision the session registers a
+    # qualified label so replies can target exactly this session. Fail-open: any error in the
+    # collision scan keeps the plain base label (previous behaviour).
+    try:
+        project = _qualified_project(uid, base_project, session_cwd, prev, directory, pid)
+    except Exception:
+        project = base_project
 
     record = {
         "user": uid,
         "project": project,
+        "project_base": base_project,
         "cwd": session_cwd,
         "pid": pid,
         "started": started,
@@ -283,6 +293,257 @@ def is_online(heartbeat_record, now: float, max_age_s: int = DEFAULT_MAX_AGE_S) 
         return False
     return (now - epoch) <= max_age_s
 
+
+
+
+# --- path-qualified addressing ------------------------------------------------------------
+# Two dirs sharing a basename resolve to one label (a main checkout and a worktree named
+# alike is the classic case): one mailbox, two sessions, replies read by whichever sibling's
+# hook runs first. Under a LIVE collision each session registers "<base>--<qual>", where the
+# qualifier is the first path component distinguishing it from every colliding sibling
+# (readable and self-describing on purpose); a short path-hash is the last-resort fallback.
+# Sticky per session lifetime: a label that flaps mid-conversation would break reply routing
+# worse than the ambiguity it solves.
+
+
+def path_qualifier(cwd, sibling_cwds):
+    """The first path component (parent dir upward) distinguishing ``cwd`` from every sibling,
+    sanitized to the label charset — or ``None`` when nothing distinguishes (caller falls back
+    to a hash)."""
+    mine = [c for c in os.path.realpath(cwd).split(os.sep) if c]
+    others = [[c for c in os.path.realpath(s).split(os.sep) if c] for s in sibling_cwds]
+    for depth in range(2, len(mine) + 1):
+        cand = config._sanitize_project(mine[-depth])
+        if not cand or cand == "_":
+            continue
+        clash = False
+        for o in others:
+            oc = config._sanitize_project(o[-depth]) if depth <= len(o) else None
+            if oc == cand:
+                clash = True
+                break
+        if not clash:
+            return cand
+    return None
+
+
+def _hash_qualifier(real_cwd, n) -> str:
+    import hashlib
+
+    return hashlib.sha256(real_cwd.encode("utf-8", "replace")).hexdigest()[:n]
+
+
+def _qualified_project(uid, base, session_cwd, prev, directory, my_pid) -> str:
+    """The label this session registers under: sticky previous qualification, else
+    ``base--<qual>`` under a live collision, else plain ``base``."""
+    # Sticky: once qualified in THIS dir, keep the label for the session's lifetime.
+    if (
+        isinstance(prev, dict)
+        and prev.get("project_base") == base
+        and isinstance(prev.get("project"), str)
+        and prev["project"] != base
+        and os.path.realpath(prev.get("cwd") or "") == os.path.realpath(session_cwd)
+    ):
+        return prev["project"]
+
+    my_real = os.path.realpath(session_cwd)
+    sib_cwds: list = []
+    sib_labels: set = set()
+    for name in os.listdir(directory):
+        if not name.endswith(".json") or name.startswith("."):
+            continue
+        if name == f"{my_pid}.json":
+            continue
+        try:
+            with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(rec, dict) or rec.get("user") != uid:
+            continue
+        if (rec.get("project_base") or rec.get("project")) != base:
+            continue
+        rcwd = rec.get("cwd")
+        if not isinstance(rcwd, str) or not rcwd or os.path.realpath(rcwd) == my_real:
+            continue  # same dir on purpose = shared address, not a collision
+        if not _pid_alive(rec.get("pid")):
+            continue
+        sib_cwds.append(rcwd)
+        if isinstance(rec.get("project"), str):
+            sib_labels.add(rec["project"])
+    if not sib_cwds:
+        return base
+
+    qual = path_qualifier(my_real, sib_cwds)
+    candidates = ([f"{base}--{qual}"] if qual else []) + [
+        f"{base}--{_hash_qualifier(my_real, 4)}",
+        f"{base}--{_hash_qualifier(my_real, 8)}",
+    ]
+    for candidate in candidates:
+        if candidate not in sib_labels:
+            return candidate
+    return f"{base}--{_hash_qualifier(my_real, 16)}"
+
+
+def address_for_path(uid: int, path: str, root=None) -> str:
+    """Path addressing: the address of the session living IN ``path`` — its live
+    (possibly qualified) registered label when one exists, else the dir's basename label.
+    Sender-side convenience only (like aliases): it can never forge identity."""
+    real = os.path.realpath(path)
+    project = config._sanitize_project(os.path.basename(real))
+    try:
+        directory = presence_dir(root)
+        for name in os.listdir(directory):
+            if not name.endswith(".json") or name.startswith("."):
+                continue
+            try:
+                with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                    rec = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(rec, dict) or rec.get("user") != uid:
+                continue
+            rcwd = rec.get("cwd")
+            if not isinstance(rcwd, str) or not rcwd or os.path.realpath(rcwd) != real:
+                continue
+            if not _pid_alive(rec.get("pid")):
+                continue
+            if isinstance(rec.get("project"), str) and rec["project"]:
+                return f"{uid}:{rec['project']}"
+    except Exception:
+        pass
+    return f"{uid}:{project}"
+
+
+def live_base_variants(address, root=None) -> list:
+    """Ambiguity signal: ``[(label, cwd)]`` of live sessions claiming ``address`` as
+    their BASE label, one entry per distinct real path. Two or more entries = a base-label
+    send is ambiguous (which session is meant?). Best-effort: unreadable state → ``[]``."""
+    try:
+        uid, project = config.parse_address(address)
+        directory = presence_dir(root)
+        variants: dict = {}
+        for name in os.listdir(directory):
+            if not name.endswith(".json") or name.startswith("."):
+                continue
+            try:
+                with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                    rec = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(rec, dict) or rec.get("user") != uid:
+                continue
+            if (rec.get("project_base") or rec.get("project")) != project:
+                continue
+            if not _pid_alive(rec.get("pid")):
+                continue
+            rcwd = rec.get("cwd") if isinstance(rec.get("cwd"), str) else ""
+            real = os.path.realpath(rcwd) if rcwd else ""
+            label = rec.get("project") if isinstance(rec.get("project"), str) else project
+            variants.setdefault(real, (f"{uid}:{label}", rcwd))
+        return list(variants.values())
+    except Exception:
+        return []
+
+
+# --- own-address resolution ----------------------------------------------------------------
+# The own address used to be raw ``basename(os.getcwd())`` everywhere. Any uid-shared process
+# standing in (or drifted into) another session's project dir then SPOKE AS that session — a
+# real incident: a gateway agent sharing the uid answered a colleague under another live
+# session's label. The session heartbeat above already registers each session's real address;
+# make it the canonical source instead of the shell cwd of the moment.
+
+
+def session_heartbeat_record(root=None):
+    """The presence record written by this process's agent-session ancestor, or ``None``.
+
+    Only trusted when the record's ``user`` equals our uid (pid reuse across users on the
+    shared presence dir must never lend us someone else's label). Best-effort: any read or
+    walk failure → ``None``."""
+    try:
+        directory = presence_dir(root)
+        path = _heartbeat_path(directory, session_pid())
+        with open(path, encoding="utf-8") as fh:
+            record = json.load(fh)
+        if isinstance(record, dict) and record.get("user") == os.getuid():
+            return record
+    except Exception:
+        return None
+    return None
+
+
+def resolve_own_address(root=None) -> tuple[str, str]:
+    """``(address, source)`` — the canonical own ``uid:project`` for send/read/state commands.
+
+    Precedence:
+
+    * ``"env"`` — ``MESH_CWD`` env var: explicit identity (relay/responder/cron discipline).
+    * ``"session"`` — the agent-session heartbeat's registered address: immune to shell
+      cwd drift (``cd /somewhere/else`` no longer changes who you are).
+    * ``"cwd"`` — legacy fallback ``basename(os.getcwd())`` for processes with neither.
+    """
+    env_cwd = (os.environ.get("MESH_CWD") or "").strip()
+    if env_cwd:
+        return config.current_address(env_cwd), "env"
+    rec = session_heartbeat_record(root)
+    if rec is not None and isinstance(rec.get("project"), str) and rec["project"]:
+        return f"{os.getuid()}:{rec['project']}", "session"
+    return config.current_address(), "cwd"
+
+
+def _ancestry_pids(limit: int = 64) -> set:
+    """The pids of this process's /proc ancestor chain (self included), bounded and cycle-safe.
+    pid 1 (init) is everyone's root ancestor and is deliberately EXCLUDED — it is never a
+    session."""
+    pids = {os.getpid()}
+    cur = os.getpid()
+    for _ in range(limit):
+        info = _read_proc(cur)
+        if info is None:
+            break
+        ppid = info[0]
+        if ppid <= 1 or ppid in pids:
+            break
+        pids.add(ppid)
+        cur = ppid
+    return pids
+
+
+def live_foreign_owner(address, root=None):
+    """A live presence record registered on ``address`` whose pid lies OUTSIDE this process's
+    ancestry, or ``None``. Used by the send-side accident guard: a cwd-derived from-label that
+    a live foreign session owns means the sender is about to wear that session's identity.
+
+    Best-effort and fail-open: unreadable state or any internal error → ``None`` (the guard
+    must never block a send by accident)."""
+    try:
+        uid, project = config.parse_address(address)
+        directory = presence_dir(root)
+        try:
+            names = os.listdir(directory)
+        except OSError:
+            return None
+        ancestry = _ancestry_pids()
+        for name in names:
+            if not name.endswith(".json") or name.startswith("."):
+                continue
+            try:
+                with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                    rec = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("user") != uid or rec.get("project") != project:
+                continue
+            pid = rec.get("pid")
+            if not isinstance(pid, int) or pid in ancestry:
+                continue
+            if _pid_alive(pid):
+                return rec
+    except Exception:
+        return None
+    return None
 
 def session_state(heartbeat_record, now: float,
                   fresh_s: int = DEFAULT_MAX_AGE_S, prune_s: int = PRUNE_TTL_S,

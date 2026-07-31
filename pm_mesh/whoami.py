@@ -15,8 +15,16 @@ from . import config
 
 
 def address(cwd: str | None = None) -> str:
-    """This session's own ``uid:project`` address (``cwd`` defaults to the process cwd)."""
-    return config.current_address(cwd)
+    """This session's own ``uid:project`` address.
+
+    With an explicit ``cwd`` the caller decides (exact legacy behaviour, used by hooks). Without
+    one, the canonical resolver decides: ``MESH_CWD`` > session heartbeat > process cwd — so the
+    printed address matches what ``mesh-send`` would actually stamp, even when the shell cwd has
+    drifted away from the session dir."""
+    if cwd is not None:
+        return config.current_address(cwd)
+    from . import presence
+    return presence.resolve_own_address()[0]
 
 
 def _own_languages_line(uid) -> str:
@@ -40,7 +48,8 @@ def render(cwd: str | None = None) -> str:
     return (
         f"your mesh address:  {addr}\n"
         f"  uid {uid}       = your kernel-verified identity (stable, unforgeable — not a guess)\n"
-        f"  project '{project}' = this session's working-dir name (changes when you cd elsewhere)\n"
+        f"  project '{project}' = your session's project name (session-bound: a drifted shell cd "
+        f"no longer changes who you are)\n"
         f"{langs_line}"
         f"\n"
         f"share it so others can reach you:  mesh-send {addr} \"...\""

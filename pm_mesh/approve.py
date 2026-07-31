@@ -20,7 +20,7 @@ import argparse
 import os
 import sys
 
-from . import audit, config, groups, identity, maildir, message, release, trust
+from . import audit, config, groups, identity, maildir, message, presence, release, trust
 
 
 class ApproveError(Exception):
@@ -125,7 +125,7 @@ def approve(msg_id: str, root=None, approver_uid=None, address=None) -> str:
     if approver_uid is None:
         approver_uid = os.geteuid()
     if address is None:
-        address = config.current_address()
+        address = presence.resolve_own_address()[0]
     receiver_uid, _ = config.parse_address(address)
 
     base = root if root is not None else config.mesh_root()

@@ -74,3 +74,30 @@ def test_cli_unknown_command_is_usage_error(capsys):
     with pytest.raises(SystemExit) as exc:
         poll.main(["on"])
     assert exc.value.code == 2
+
+
+def test_cli_set_on_prints_keep_working_advisory(tmp_path, monkeypatch, capsys):
+    """Arming fast-mode must remind the agent that waiting is never a task (real incident:
+    an announced incoming question made a session idle between ticks, abandoning its
+    in-flight work)."""
+    import json
+    monkeypatch.setattr(fastmode, "_data_dir", lambda home=None: str(tmp_path / "fm"))
+    monkeypatch.setattr(poll.presence, "resolve_own_address", lambda *a, **k: ("1100:tokamak", "cwd"))
+    assert poll.main(["fastmode", "set", "--step", "1"]) == 0
+    out, err = capsys.readouterr()
+    # stdout stays machine-parseable JSON, advisory goes to stderr only
+    rec = json.loads(out)
+    assert rec["mode"] == "on" and rec["step"] == 1
+    assert "advisory:" in err
+    assert "not your task" in err.lower()
+    assert "keep working" in err.lower() or "continue" in err.lower()
+
+
+def test_cli_off_and_get_print_no_advisory(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(fastmode, "_data_dir", lambda home=None: str(tmp_path / "fm"))
+    monkeypatch.setattr(poll.presence, "resolve_own_address", lambda *a, **k: ("1100:tokamak", "cwd"))
+    assert poll.main(["fastmode", "off"]) == 0
+    assert poll.main(["fastmode", "get"]) == 0
+    _, err = capsys.readouterr()
+    assert "advisory:" not in err
+

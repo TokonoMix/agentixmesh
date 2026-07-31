@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 
-from . import config, maildir
+from . import config, maildir, presence
 
 
 def _list_files(path: str):
@@ -45,7 +45,7 @@ def gather(root=None) -> dict:
     (NOT via ``maildir.maildrop`` — that would create subdirectories). Missing subdirectories
     count as ``0``.
     """
-    address = config.current_address()
+    address = presence.resolve_own_address()[0]
     base = root if root is not None else config.mesh_root()
     drop = os.path.join(base, address)
     return {

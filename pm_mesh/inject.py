@@ -165,6 +165,30 @@ def _sender_project(from_) -> str:
         return ""
 
 
+def _relay_box(src_address: str, dst_address: str, sub: str) -> int:
+    """Move every entry of ``src``'s ``sub`` box (``new``/``held``) into ``dst``'s.
+
+    Same-tree ``os.rename`` (atomic; both boxes live under one mesh root), ``.shown``
+    companions travel along as plain names, dot-prefixed temp files stay. Best-effort: a
+    per-file failure skips that file, never raises."""
+    src = os.path.join(maildir.maildrop(src_address), sub)
+    dst = os.path.join(maildir.maildrop(dst_address), sub)
+    moved = 0
+    try:
+        names = os.listdir(src)
+    except OSError:
+        return 0
+    for name in names:
+        if name.startswith("."):
+            continue
+        try:
+            os.rename(os.path.join(src, name), os.path.join(dst, name))
+            moved += 1
+        except OSError:
+            continue
+    return moved
+
+
 def main(argv=None, plat=None) -> int:
     """Process the own address's inbox in one turn; print fresh DATA frames to stdout.
 
@@ -178,13 +202,37 @@ def main(argv=None, plat=None) -> int:
         # Cross-harness: derive the address from the SESSION cwd, which a harness may report via
         # MESH_CWD or its hook stdin JSON when it runs the hook outside the session dir (fail-closed
         # → None → os.getcwd(), so Claude Code and manual runs are unchanged).
-        address = config.current_address(_effective_cwd(_read_hook_stdin()))
+        effective_cwd = _effective_cwd(_read_hook_stdin())
+        address = config.current_address(effective_cwd)
         _maybe_show_welcome(address)       # welcome BEFORE pending (ux-7); one-time via marker/sentinel
         maildir.maildrop(address)          # make sure new/cur/held exist
         try:
-            presence.heartbeat()           # refresh the session heartbeat (f2-06)
+            presence.heartbeat(cwd=effective_cwd)  # tag under the SESSION address, not the hook cwd
         except Exception:
             pass  # fail-open: presence must NEVER break delivery
+        # Path-qualified addressing: under a live same-basename collision the heartbeat just
+        # registered a QUALIFIED label — this session then owns two boxes. Relay base new/ +
+        # held/ into the qualified box (atomic same-tree renames; the relay IS the base-box
+        # read, keeping first-reader semantics between siblings) and run the rest of the turn
+        # on the qualified address, so precise replies and base traffic surface in one
+        # pipeline. Fail-open: any error keeps the plain base address (previous behaviour).
+        try:
+            _hb = presence.session_heartbeat_record()
+            if (
+                isinstance(_hb, dict)
+                and isinstance(_hb.get("project"), str)
+                and isinstance(_hb.get("project_base"), str)
+                and _hb["project"] != _hb["project_base"]
+                and f"{os.geteuid()}:{_hb['project_base']}" == address
+            ):
+                qualified = f"{_hb['user']}:{_hb['project']}"
+                maildir.maildrop(qualified)        # ensure new/cur/held exist
+                maildir.recover_stale(address)     # orphaned base cur/ → new/ BEFORE the relay
+                for _sub in ("new", "held"):
+                    _relay_box(address, qualified, _sub)
+                address = qualified
+        except Exception:
+            pass
         try:
             presence.prune_stale()         # janitor: clean up heartbeats of dead/old sessions
         except Exception:

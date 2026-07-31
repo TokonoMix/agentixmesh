@@ -69,8 +69,10 @@ exec python3 -m pm_mesh.onboard "$@"
 EOF
 sudo tee /usr/local/bin/mesh-whoami >/dev/null <<'EOF'
 #!/usr/bin/env sh
-# mesh-whoami — print THIS session's own mesh address (uid:project). No maildir access, so no
-# MESH_ROOT needed; uid is os.getuid(), project is the basename of the caller's cwd.
+# mesh-whoami — print THIS session's own mesh address (uid:project). Defaults to the shared
+# root so the session-heartbeat resolver sees the same presence dir the inject hook writes
+# (a bare run would otherwise look in the local root and fall back to the cwd label).
+: "${MESH_ROOT:=/srv/mesh}"; export MESH_ROOT
 exec python3 -m pm_mesh.whoami "$@"
 EOF
 sudo tee /usr/local/bin/mesh-poll >/dev/null <<'EOF'

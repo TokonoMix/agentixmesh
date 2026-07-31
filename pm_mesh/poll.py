@@ -15,7 +15,7 @@ import json
 import sys
 import time
 
-from . import config, fastmode
+from . import config, fastmode, presence
 
 # Exit codes
 EX_OK = 0
@@ -34,7 +34,7 @@ def _fastmode_cli(argv) -> int:
     p.add_argument("--step", type=int, default=None)
     p.add_argument("--note", default="")
     args = p.parse_args(argv)
-    address = config.current_address()
+    address = presence.resolve_own_address()[0]
     now = time.time()
     if args.action in ("get", "status"):
         print(json.dumps(fastmode.load(address, now=now), ensure_ascii=False, indent=2))
@@ -45,6 +45,17 @@ def _fastmode_cli(argv) -> int:
         mode = args.mode or "on"
         step = args.step if args.step is not None else 1
         rec = fastmode.save(address, mode=mode, step=step, now=now, note=args.note)
+        if mode == "on":
+            # Counterweight to the wakeup scheduler's "nothing more to do this turn"
+            # boilerplate, delivered at the exact moment of arming (real incident: an
+            # announced incoming question made the agent idle-wait between ticks,
+            # abandoning its in-flight work).
+            print(
+                "advisory: fast-mode armed — this is bookkeeping, NOT your task. Continue any "
+                "in-flight or deferred work in this same turn; waiting for a mesh message (even an "
+                "announced one) is never a task. Carry unfinished work in the wakeup prompt.",
+                file=sys.stderr,
+            )
     print(json.dumps(rec, ensure_ascii=False, indent=2))
     return EX_OK
 

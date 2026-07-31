@@ -65,17 +65,22 @@ def _own_address():
     return f"{os.getuid()}:projdir"
 
 
-def test_drift_warns_naming_both_addresses(mesh_env, capsys):
-    """Heartbeat says the session lives elsewhere → cwd-drift warning with both addresses."""
+def test_drift_is_fixed_not_just_warned(mesh_env, capsys):
+    """Upgrade: a heartbeat that says the session lives elsewhere now CORRECTS the
+    from-address (send stamped with the session identity) instead of merely warning — the
+    reply-routing hole is closed at the source. A transparency note still names both."""
     _write_heartbeat(mesh_env, "realproject")
 
     rc = send.main(["1100:peer", "hoi"])
 
     assert rc == 0
+    delivered = maildir.list_new("1100:peer")
+    assert len(delivered) == 1
+    with open(delivered[0], encoding="utf-8") as fh:
+        assert json.load(fh)["from"] == f"{os.getuid()}:realproject"
     err = capsys.readouterr().err
-    assert "cwd-drift" in err
-    assert _own_address() in err                     # the dead from-label
-    assert f"{os.getuid()}:realproject" in err       # the session's real address
+    assert f"{os.getuid()}:realproject" in err       # the session's real address, named
+    assert _own_address() in err                     # what the drifted cwd would have stamped
 
 
 def test_matching_heartbeat_stays_silent(mesh_env, capsys):

@@ -18,7 +18,7 @@ This is the resting state. You return to it whenever fast-mode turns off.
 (and off on "snel-modus uit"). It trades tokens for latency: each tick wakes you, so it is *not*
 token-free — that is the whole reason it is opt-in, not the default.
 
-### Activation is a SIDE-task — it never cancels in-flight work
+### Waiting is NEVER a task — fast-mode never cancels or displaces in-flight work
 
 "snel-modus aan" usually arrives glued to real work in the same prompt ("approved: go ahead with
 A — and turn fast-mode on"). Turning fast-mode on is bookkeeping, not a new assignment that
@@ -35,10 +35,20 @@ replaces the rest of the prompt or work already in flight:
   incident: "approved, go ahead with A — and turn fast-mode on" → the agent scheduled the tick and
   stopped, abandoning the A-track for that turn). If anything is still pending, do it now — the
   wakeup fires regardless.
+- **An ANNOUNCED incoming message is not an assignment either.** "X will mesh you a question
+  shortly" changes nothing about what you do now: keep working (or resume whatever was
+  deferred); the tick or inject-hook surfaces the frame when it actually arrives. Idling
+  between pulses "so you're ready" is exactly the failure mode (a real incident: an announced
+  question from a colleague made the agent stop all work and sit out the ladder). Arming or
+  resetting the ladder for an expected message is fine — going idle is not.
 - **Work in flight when you schedule? Carry it in the wakeup prompt.** Append it to the recurring
   prompt ("fast-mode tick + continue with <task>") so a crash or an idle gap cannot lose the
   thread. A tick-turn then handles frames first and continues that work — it does not treat the
-  mesh-tick as the whole job.
+  mesh-tick as the whole job. This is not optional: a wakeup prompt that only says "check the
+  mesh" is how deferred work gets silently dropped.
+- **`mesh-poll fastmode set` prints this reminder on stderr at arming time** — treat that
+  advisory as the authoritative counterweight to the wakeup scheduler's boilerplate, not as
+  noise.
 
 While on, run a **self-rescheduling wakeup on a decaying ladder**. Each tick: run `mesh-badge` (free,
 0 tokens), handle any real frame that arrived, then **schedule the next wakeup yourself** with a delay

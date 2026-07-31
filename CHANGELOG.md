@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-07-31
+
+Identity sync: the own address is session-bound, and same-basename collisions get readable
+qualified labels. No change to the trust invariants (human-gate, body-withholding,
+kernel-verified identity) — the `from` label remains sender-claimed DATA within one uid;
+these changes stop *accidents*, not deliberate same-uid impersonation.
+
+### Added
+- **Session-bound own address.** `presence.resolve_own_address()` is the one resolver for
+  "who am I": `MESH_CWD` env (explicit identity) > the session presence-heartbeat
+  (drift-immune) > `basename(cwd)` (legacy fallback). Used by `mesh-send`, `mesh-whoami`,
+  `mesh status`, `mesh-poll fastmode` and `mesh approve` — a drifted shell `cd` no longer
+  changes who you are. The dead-from advisory's drift tier is superseded: drift is now
+  *corrected* at send (stamped with the session address, transparency note on stderr).
+- **Foreign-live-owner send guard.** A cwd-resolved from-address that a live *other* session
+  is registered on refuses the send (exit 3) with the remedy named — a uid-shared process
+  (gateway, cron) can no longer accidentally speak as another live session. Explicit
+  `MESH_CWD` and session-resolved sends are never blocked; killswitch `MESH_FROM_GUARD=off`.
+- **Path-qualified addressing (worktree collision).** Two live sessions whose dirs share a
+  basename used to share one mailbox. Under a live collision each session now registers a
+  readable qualified label — `<base>--<distinguishing-path-segment>` (short path-hash only as
+  last resort) — sticky for the session lifetime. A qualified session reads both its boxes
+  (atomic base relay-in), so precise replies and base traffic surface in one pipeline.
+- **Refuse-on-ambiguity + path addressing in `mesh-send`.** Sending to a base label claimed
+  by ≥2 live sessions is refused (exit 4) listing each variant with its path (`--base`
+  delivers to the shared box deliberately), and `mesh-send <uid>:/abs/path` addresses the
+  session *in* that directory — humans think in folders; the mesh translates.
+- **Fast-mode keep-working advisory.** `mesh-poll fastmode set` (arming) prints a stderr
+  reminder that waiting is never a task — the counterweight to a wakeup scheduler's
+  "nothing more to do this turn" boilerplate. Skill: the side-task rule is broadened
+  ("an announced incoming message is not an assignment"; always carry in-flight work in the
+  wakeup prompt), and long bodies go via a one-line stdin redirect (a heredoc makes the
+  command multi-line → permission prompt, fatal in unattended runs).
+
 ## [1.3.0] — 2026-07-27
 
 Reliability sync. No change to the trust invariants (human-gate, body-withholding,

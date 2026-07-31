@@ -13,7 +13,7 @@ import sys
 
 import os
 
-from . import audit, config, maildir, message
+from . import audit, config, maildir, message, presence
 
 
 def _warn_if_dead_from(from_addr: str) -> None:
@@ -83,6 +83,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--subject", default=None,
         help=f"optional subject (sender-claimed, DATA; truncated above {message.SUBJECT_MAX_LEN} characters)",
     )
+    p.add_argument(
+        "--base", action="store_true",
+        help="deliberately deliver to the shared BASE mailbox when multiple live sessions "
+             "claim that label (default: such a send is refused as ambiguous)",
+    )
     return p
 
 
@@ -103,6 +108,16 @@ def main(argv=None) -> int:
     except Exception:
         pass  # address book is best-effort; never block a send on it
 
+    # Path addressing: "<uid>:/abs/path" targets the session IN that directory —
+    # humans think in folders; the mesh translates to its live (possibly qualified) label.
+    try:
+        if ":" in args.to:
+            _uid_part, _proj_part = args.to.split(":", 1)
+            if _uid_part.isdigit() and _proj_part.startswith("/"):
+                args.to = presence.address_for_path(int(_uid_part), _proj_part)
+    except Exception:
+        pass  # fall through to normal validation below
+
     # Validate the destination address before writing anything.
     try:
         config.parse_address(args.to)
@@ -111,10 +126,28 @@ def main(argv=None) -> int:
               f"(tip: mesh-resolve --list shows known names/aliases)", file=sys.stderr)
         return 2
 
+    # Refuse-on-ambiguity: a base label claimed by >=2 live sessions in different dirs is not
+    # a target, it is a question. The agent puts the choice to the human; --base delivers to
+    # the shared base box as a deliberate act.
+    if not args.base:
+        variants = presence.live_base_variants(args.to)
+        if len(variants) >= 2:
+            listing = "; ".join(f"{label} ({cwd})" for label, cwd in sorted(variants))
+            print(
+                f"mesh-send: ambiguous — {len(variants)} live sessions claim {args.to}: "
+                f"{listing}. Pick one qualified address (when in doubt, ask the human which "
+                f"session is meant), or pass --base to deliver to the shared base mailbox.",
+                file=sys.stderr,
+            )
+            return 4
+
     body = args.body if args.body is not None else sys.stdin.read()
 
+    # Own identity: MESH_CWD (explicit) > session heartbeat (drift-immune) > shell cwd.
+    from_addr, from_source = presence.resolve_own_address()
+
     msg = message.new_message(
-        args.to, body, kind=args.kind, thread=args.thread, from_=config.current_address(),
+        args.to, body, kind=args.kind, thread=args.thread, from_=from_addr,
         subject=args.subject,
     )
 
@@ -125,14 +158,42 @@ def main(argv=None) -> int:
         print(f"mesh-send: invalid message: {exc}", file=sys.stderr)
         return 2
 
+    # Accident guard: a cwd-derived from-label that a live FOREIGN session is registered on
+    # means this process is about to speak AS that session — replies would land in an inbox
+    # it never reads from here. Explicit MESH_CWD and session-resolved sends are never
+    # blocked; same-uid impersonation on purpose cannot be prevented anyway.
+    if from_source == "cwd" and (os.environ.get("MESH_FROM_GUARD") or "").lower() != "off":
+        owner = presence.live_foreign_owner(from_addr)
+        if owner is not None:
+            print(
+                f"mesh-send: refusing to send as {from_addr} — that address is registered to a "
+                f"live session (pid {owner.get('pid')}, cwd {owner.get('cwd')}) that this "
+                f"process is not part of. The message would wear that session's identity and "
+                f"replies would land in its inbox. Send under your own identity: run from your "
+                f"own project dir, or set MESH_CWD=<your session dir>. "
+                f"(accident-guard; killswitch: MESH_FROM_GUARD=off)",
+                file=sys.stderr,
+            )
+            return 3
+
     try:
         maildir.deliver(msg)
     except OSError as exc:
         print(f"mesh-send: delivery failed: {exc}", file=sys.stderr)
         return 1
 
-    # Delivered — advise (stderr, non-blocking) when replies to our from-label would be lost.
-    _warn_if_dead_from(msg.from_)
+    # Delivered — transparency + advisories (stderr, never blocking).
+    if from_source == "session":
+        cwd_addr = config.current_address()
+        if cwd_addr != msg.from_:
+            print(
+                f"mesh-send: note: sent as your session address {msg.from_} (the drifted shell "
+                f"cwd would have stamped {cwd_addr}).",
+                file=sys.stderr,
+            )
+    elif from_source == "cwd":
+        # Legacy path only: advise when replies to our from-label would be lost.
+        _warn_if_dead_from(msg.from_)
 
     # Central audit (f2-15) — no body text, best-effort.
     audit.append(
