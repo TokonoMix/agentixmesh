@@ -71,8 +71,11 @@ def test_cli_set_get_roundtrip(tmp_path, monkeypatch):
 
 
 def test_cli_unknown_command_is_usage_error(capsys):
+    """An unknown subcommand is a usage error. NOTE: never assert this with a command that
+    later becomes real — `on` used to be invalid here and, once implemented, this test drove a
+    live delivery-enable against the caller's own ~/.claude/settings.json."""
     with pytest.raises(SystemExit) as exc:
-        poll.main(["on"])
+        poll.main(["definitely-not-a-command"])
     assert exc.value.code == 2
 
 

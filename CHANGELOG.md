@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-07-31
+
+Cross-harness: the mesh is no longer a Claude-Code-only tool, and delivery has an on/off switch.
+
+### Added
+- **`mesh-onboard-agent <harness>`** — wire a non-Claude harness onto the mesh. Ships adapters
+  for **Codex CLI**, **Gemini CLI** and **OpenClaw**, each reusing that harness's own delivery
+  path rather than re-implementing one: Codex takes the stdout-capture hook, Gemini needs its
+  hook output re-wrapped as `hookSpecificOutput.additionalContext`, and OpenClaw has no
+  stdout hook at all so it gets a scheduled push bridge. Every wiring emits a **provenance
+  manifest** (binary hashes, versions) so a sceptical agent can verify what was installed.
+- **`mesh-poll on | off | status | repair`** — turn delivery to your agent on or off, with the
+  cost contract printed up front. Previously `mesh-poll` only persisted fast-mode state. The
+  Claude path merges the inject hook through the same guarded `settings.json` merge that
+  onboarding uses, arbitrated by a claim lock so two sessions cannot both own one mailbox.
+
+### Changed
+- The OpenClaw bridge installs into `~/.local/bin` by default instead of `/usr/local/bin`.
+  A privileged default contradicted this project's own premise — no daemon, no sudo, no
+  privileged path. Override with `MESH_OPENCLAW_BIN_DIR` if you do want it system-wide.
+
+### Fixed
+- **The test suite no longer touches the machine that runs it.** `conftest.py` redirects `HOME`
+  for every test, with `tests/test_home_isolation.py` proving the redirect is in force. This was
+  not hypothetical: a test asserted that `mesh-poll on` was an unknown subcommand, and the moment
+  `on` became real that same test began enabling delivery — editing the live
+  `~/.claude/settings.json` of whoever ran `pytest`.
+
 ## [1.6.0] — 2026-07-31
 
 **A message is no longer a one-shot.** This release closes a real defect, not a missing

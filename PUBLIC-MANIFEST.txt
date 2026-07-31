@@ -36,21 +36,29 @@ pm_mesh/consent.py
 pm_mesh/dcp.py
 pm_mesh/dcp_recv.py
 pm_mesh/dcp_send.py
+pm_mesh/delivery.py
 pm_mesh/doctor.py
 pm_mesh/enroll.py
 pm_mesh/fastmode.py
 pm_mesh/frame.py
 pm_mesh/group_reexec.py
 pm_mesh/groups.py
+pm_mesh/harness_onboard.py
 pm_mesh/identity.py
 pm_mesh/inject.py
 pm_mesh/maildir.py
 pm_mesh/message.py
 pm_mesh/messages.py
 pm_mesh/onboard.py
+pm_mesh/onboard_render.py
 pm_mesh/platform.py
 pm_mesh/poll.py
+pm_mesh/poll_controllers.py
+pm_mesh/poll_counter.py
+pm_mesh/poll_lock.py
+pm_mesh/poll_types.py
 pm_mesh/presence.py
+pm_mesh/provenance.py
 pm_mesh/read_cli.py
 pm_mesh/release.py
 pm_mesh/reminder.py
@@ -80,6 +88,7 @@ pm_mesh/CAPABILITY-PROFILES.md
 pm_mesh/CROSS-USER-SETUP.md
 pm_mesh/LEADER-READ-CONSENT.md
 pm_mesh/mesh-session.settings.json
+pm_mesh/templates/agent_skill.md.tmpl
 
 # ── The skill (the most-read public artifact) ────────────────────────────────────────
 skill/SKILL.md
@@ -105,9 +114,14 @@ hooks/settings-snippet.json
 hooks/codex/README.md
 hooks/codex/config-snippet.toml
 hooks/codex/hooks-snippet.json
+hooks/gemini/README.md
+hooks/gemini/mesh-inject-gemini.py
+hooks/openclaw/README.md
+hooks/openclaw/mesh-inject-openclaw.sh
 
 # ── Data shipped with the package ────────────────────────────────────────────────────
 data/addressbook.json
 
 # ── This manifest and its test ───────────────────────────────────────────────────────
 PUBLIC-MANIFEST.txt
+conftest.py
