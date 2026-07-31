@@ -17,8 +17,54 @@
 # SYNTAX: one fnmatch pattern per line, `#` starts a comment, blank lines ignored.
 #         Patterns match repo-relative POSIX paths.
 
-# ── The shipped engine + its tests (public in full: same-user delivery) ──────────────
-pm_mesh/*.py
+# ── The shipped engine (one explicit line per module — NO glob) ──────────────────────
+# A `pm_mesh/*.py` glob used to stand here. It made this manifest INERT for exactly the case
+# it exists to stop: a new module dropped next to the existing ones was auto-published, and
+# the default-deny only ever guarded new top-level directories. Every module is now listed by
+# name, so adding one to the public build is a line someone writes on purpose.
+pm_mesh/__init__.py
+pm_mesh/addressbook.py
+pm_mesh/addressbook_add.py
+pm_mesh/approve.py
+pm_mesh/audit.py
+pm_mesh/badge.py
+pm_mesh/capability_lint.py
+pm_mesh/config.py
+pm_mesh/consent.py
+pm_mesh/dcp.py
+pm_mesh/dcp_recv.py
+pm_mesh/dcp_send.py
+pm_mesh/doctor.py
+pm_mesh/enroll.py
+pm_mesh/fastmode.py
+pm_mesh/frame.py
+pm_mesh/group_reexec.py
+pm_mesh/groups.py
+pm_mesh/identity.py
+pm_mesh/inject.py
+pm_mesh/maildir.py
+pm_mesh/message.py
+pm_mesh/messages.py
+pm_mesh/onboard.py
+pm_mesh/platform.py
+pm_mesh/poll.py
+pm_mesh/presence.py
+pm_mesh/release.py
+pm_mesh/replay.py
+pm_mesh/resolve.py
+pm_mesh/revoke.py
+pm_mesh/send.py
+pm_mesh/settings_merge.py
+pm_mesh/status.py
+pm_mesh/trust.py
+pm_mesh/trust_cli.py
+pm_mesh/who.py
+pm_mesh/whoami.py
+
+# ── Tests (glob, deliberately) ───────────────────────────────────────────────────────
+# Still a glob: tests are not product surface and every test file also passes the org-literal
+# denylist. Residual risk accepted — a NEW test file crossing over is caught by that denylist,
+# not by this manifest.
 test_*.py
 tests/*.py
 

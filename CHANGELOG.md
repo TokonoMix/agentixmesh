@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-07-31
+
+Operability: a read-only self-diagnosis command, and a real default-deny publishing guard.
+
+### Added
+- **`mesh doctor`** — strictly read-only diagnosis for the question every adopter eventually
+  asks: *"I never got the message — what's wrong with my setup?"* Walks the fixed checklist by
+  hand-inspection instead of you doing it: is the inject-hook wired, does the skill symlink
+  resolve, what are `MESH_ROOT`/`MESH_ACL`, are the mailbox permissions sane, and is any
+  cross-user dropbox mis-owned (the failure that permanently blocks a receiver). It mutates
+  nothing, guards every check individually, and always exits 0. Checks it genuinely cannot
+  perform — a directory it may not traverse — report `--`, never `OK`: unknown is not ok.
+
+### Changed
+- **`PUBLIC-MANIFEST.txt` no longer globs the engine.** A `pm_mesh/*.py` line used to stand
+  where 38 explicit module paths now are. That glob made the manifest inert for exactly the
+  case it exists to stop — a new module dropped beside the existing ones was auto-published,
+  so the default-deny only ever guarded new top-level directories. Adding a module to the
+  public build is now a line someone writes on purpose. Tests keep their glob deliberately
+  (not product surface, and covered by the org-literal denylist).
+
 ## [1.4.0] — 2026-07-31
 
 Identity sync: the own address is session-bound, and same-basename collisions get readable
