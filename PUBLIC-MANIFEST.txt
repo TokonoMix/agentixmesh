@@ -23,6 +23,8 @@
 # the default-deny only ever guarded new top-level directories. Every module is now listed by
 # name, so adding one to the public build is a line someone writes on purpose.
 pm_mesh/__init__.py
+pm_mesh/ack_cli.py
+pm_mesh/acks.py
 pm_mesh/addressbook.py
 pm_mesh/addressbook_add.py
 pm_mesh/approve.py
@@ -49,7 +51,9 @@ pm_mesh/onboard.py
 pm_mesh/platform.py
 pm_mesh/poll.py
 pm_mesh/presence.py
+pm_mesh/read_cli.py
 pm_mesh/release.py
+pm_mesh/reminder.py
 pm_mesh/replay.py
 pm_mesh/resolve.py
 pm_mesh/revoke.py

@@ -52,13 +52,18 @@ class InjectTest(unittest.TestCase):
         # kernel-verified owner_uid in the header
         self.assertIn(str(os.getuid()), out)
 
-    def test_second_run_dedup_no_output(self):
+    def test_second_run_never_repeats_the_body(self):
+        """The body is shown exactly ONCE. A second run may only re-surface the bounded,
+        metadata-only unread reminder (no body, no preview) pointing at ``mesh read``."""
         self._deliver(body="once-only")
         rc1, out1 = self._run()
         self.assertIn("once-only", out1)
         rc2, out2 = self._run()
         self.assertEqual(rc2, 0)
-        self.assertEqual(out2, "")
+        self.assertNotIn("once-only", out2)      # never the body again
+        self.assertNotIn("mesh-msg", out2)       # nor a second full frame
+        if out2:
+            self.assertIn("unread mesh", out2)   # only the compact reminder line
 
     def test_message_marked_shown_after_render(self):
         self._deliver(body="mark me")

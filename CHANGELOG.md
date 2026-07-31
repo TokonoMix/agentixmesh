@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-07-31
+
+**A message is no longer a one-shot.** This release closes a real defect, not a missing
+feature: the build shipped the full cross-user gate (hold + approve) with no way to be
+reminded that something was still held, and no way to see any message again after its single
+render. A receiver who missed the one notice was never told again, and the sender was never
+told at all — silent loss on both sides. In our own deployment that failure mode stranded
+dozens of real messages across several mailboxes for weeks before anyone noticed.
+
+### Added
+- **Unread re-notify.** A body is still rendered in full exactly once. If the turn that
+  consumed it wasn't one the human was watching, the mesh now re-surfaces it a few more times
+  as a **compact one-line reminder** — metadata only, never the body again — bounded by
+  `AUTO_RENOTIFY_MAX` within a recency window, then it expires.
+- **Held messages keep being mentioned** until approved: bounded per-message notices
+  (`HELD_REMINDER_MAX`, the first counts as #1) throttled by `HELD_REMINDER_MIN_INTERVAL_S`,
+  plus an un-exhaustible standing line saying how many are held and how old the oldest is.
+  That line is deliberately safe to never expire: it carries strictly less than the notice it
+  outlives — a count and an age, no body, no subject, no thread, not even a sender — so it
+  cannot become a side-channel around the withholding gate.
+- **`mesh-read <id-prefix>`** — re-render a message you already saw. Full body for a same-uid
+  message, the capped preview for notify-only, and **never** the withheld body of a held
+  cross-user message: a way back to what you saw, not a way around the gate.
+- **`mesh-ack <id-prefix>` / `--all`** — you have seen it; stop the reminders.
+
+### Changed
+- The body-withholding invariant now covers the reminder path explicitly: every re-notice of a
+  held message is metadata-only, at every trust level.
+- Two dedup tests asserted "a second inject prints nothing". They now assert the stronger,
+  correct contract: the second run never repeats the body or the frame, and may only emit the
+  bounded metadata reminder.
+
 ## [1.5.0] — 2026-07-31
 
 Operability: a read-only self-diagnosis command, and a real default-deny publishing guard.

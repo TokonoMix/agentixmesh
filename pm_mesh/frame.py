@@ -251,6 +251,33 @@ def render_held(msg: message.Message, owner_uid: int, level: str) -> str:
 NOTIFY_PREVIEW_MAX = 120
 
 
+
+def render_unread_auto(msg: message.Message, owner_uid: int, rel_age: str) -> str:
+    """Render the COMPACT one-line AUTO re-notify reminder — METADATA ONLY.
+
+    A same-uid AUTO message's body was already shown in full at delivery; this recurring reminder is
+    deliberately metadata-only (a cost/noise choice, NOT a gate — contrast ``render_held``). It NEVER
+    contains ``msg.body``. Every untrusted field (subject/thread/id, and — for a cross-user notify-only
+    message that also lives in ``cur/`` — those too) goes through ``_sanitize_field`` (NFKC +
+    confusable-fold + tag-defang + newline→space), so the line can never break out to column 0 or forge
+    a frame boundary. ``owner_uid`` is the kernel-verified identity (the only trusted field). ``rel_age``
+    is a caller-computed relative-age string (frame stays pure/deterministic). Pure function: no I/O.
+    """
+    owner_uid = int(owner_uid)
+    subject = _sanitize_field(msg.subject) if msg.subject else "(no subject)"
+    thread8 = _sanitize_field(msg.thread)[:8]
+    msgid8 = _sanitize_field(msg.id)[:8]
+    age = _sanitize_field(rel_age)
+    return (
+        f"📬 unread mesh: from {owner_uid} ✓ · subj \"{subject}\" · "
+        f"thread {thread8} · {age} — read full: mesh read {msgid8}"
+    )
+
+
+#: Hard upper bound on the notify-only preview length (measure D, f2-11). A notify-only message may
+#: show a short glimpse; the full body stays out of the context. Deliberately short.
+NOTIFY_PREVIEW_MAX = 120
+
 def render_notify(msg: message.Message, owner_uid: int) -> str:
     """Render a ``notify-only`` message: metadata + a **short, hard-capped, sanitized** preview snippet.
 

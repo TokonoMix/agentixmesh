@@ -33,6 +33,70 @@ MAX_MESSAGES_PER_TURN = 200
 #: anti-DoS). Deliberately generous; above it a single summary line appears instead of each preview.
 NOTIFY_RATE_CAP_PER_TURN = 20
 
+#: Held-message re-notify (anti-spam). A cross-user ``held`` message is shown as inert
+#: metadata ONCE when it lands; a receiver who misses that notice would otherwise never be reminded.
+#: Re-notify re-emits the SAME inert metadata (never the body) on later turns, bounded by:
+#: * ``HELD_REMINDER_MAX`` — max total metadata notices per held message (the first notice counts as
+#:   #1). After this many, a still-unapproved message stops nagging; it stays visible via ``mesh
+#:   status`` ("N held, waiting for mesh approve") so it is never silently lost. PROCEED default.
+HELD_REMINDER_MAX = 5
+#: * ``HELD_REMINDER_MIN_INTERVAL_S`` — minimum seconds between two notices of the SAME message. The
+#:   inject hook cannot reliably tell a SessionStart from a UserPromptSubmit, so this time-cap is what
+#:   prevents a reminder on every prompt while still reminding across sessions. PROCEED default (30 min).
+HELD_REMINDER_MIN_INTERVAL_S = 1800
+
+#: AUTO re-notify — "no missed one-shot mesh". A same-uid AUTO message is shown once
+#: then lives in ``cur/``; if the consuming inject turn was not the human's active session, the
+#: human silently misses it. Re-notify re-surfaces a COMPACT metadata reminder for recently-consumed
+#: AUTO messages, up to ``AUTO_RENOTIFY_MAX`` times, spaced ``AUTO_RENOTIFY_MIN_INTERVAL_S`` apart,
+#: within an ``AUTO_RENOTIFY_WINDOW_S`` recency window, then auto-expires. Bounded repetition, NOT
+#: presence-detection (a ``UserPromptSubmit`` is not a human signal on a multi-headless-session box).
+#: Env-overridable ; read at import so tests can ``mock.patch.object``/reload.
+AUTO_RENOTIFY_WINDOW_S = int(os.environ.get("AUTO_RENOTIFY_WINDOW_S", "21600"))  # 6h recency window
+AUTO_RENOTIFY_MAX = int(os.environ.get("AUTO_RENOTIFY_MAX", "3"))  # max RE-notifications per message
+#: **DISTINCT from ``HELD_REMINDER_MIN_INTERVAL_S`` (1800)** — reusing the 30-min held interval would
+#: cluster all 3 reminders inside ~1h of headless turns, so a human away all afternoon returns to an
+#: expired message (a reviewer caught this: reusing 30 min clusters all three reminders inside ~1h). ~2h ≈ window/MAX spreads them across the window.
+AUTO_RENOTIFY_MIN_INTERVAL_S = int(os.environ.get("AUTO_RENOTIFY_MIN_INTERVAL_S", "7200"))  # ~2h
+#: Global cap on AUTO re-notify reminder lines emitted in ONE inject turn, across ALL senders — bounds
+#: context/cost of a large recently-consumed ``cur/`` (the per-sender ``NOTIFY_RATE_CAP_PER_TURN`` caps
+#: a single sender; this caps the whole turn). The rest simply reappears next turn.
+AUTO_RENOTIFY_GLOBAL_CAP_PER_TURN = int(os.environ.get("AUTO_RENOTIFY_GLOBAL_CAP_PER_TURN", "20"))
+
+
+def within_window(shown_mtime: float, now: float, window_s: int) -> bool:
+    """True iff a message shown at ``shown_mtime`` is still within the recency ``window_s`` at ``now``.
+
+    Recency is measured by the ``.shown`` companion mtime — the time since the human *could* have seen
+    the message — NOT the message ``ts_utc`` (a message delivered near the window edge would otherwise
+    get ~0 reminders). A future ``shown_mtime`` (clock skew) yields a negative age → excluded.
+    """
+    age = now - shown_mtime
+    return 0 <= age <= window_s
+
+
+
+#: Name of the POSIX group that shares cross-user maildrops (phase 2). Members (senders) may drop +
+#: traverse but not list/read; only the receiver reads. Provisioning: ``CROSS-USER-SETUP.md``.
+MESH_GROUP = "mesh"
+
+#: Shared mesh root from which cross-user is automatically derived (if ``$MESH_CROSS_USER`` is not
+#: explicitly set). Same-user remains the default for any other root (byte-identical phase 1).
+CROSS_USER_ROOT = "/srv/mesh"
+
+#: Mode of the shared cross-user root: setgid + sticky + rwx-wx--- (``0o3730``, "self-service"). Group
+#: members self-create their own ``<uid>:<project>`` mailbox on the root — that mkdir needs group-write,
+#: so the root is group-writable but NOT group-readable (members cannot enumerate the mesh), and the
+#: sticky bit blocks a member from deleting/renaming another's mailbox. Delivery re-verifies each drop is
+#: owned by the address's uid (``maildir.assert_secure_maildrop``), so a squatted dir is refused rather
+#: than honoured — worst case a trusted member DoS's an address, never intercepts it. The substrate-
+#: assertion in enroll checks the root against this; the runbook (CROSS-USER-SETUP.md) provisions it.
+CROSS_USER_ROOT_MODE = 0o3730
+
+#: Values of ``$MESH_CROSS_USER`` that explicitly turn cross-user on resp. off.
+_TRUE = {"1", "true", "yes", "on"}
+_FALSE = {"0", "false", "no", "off"}
+
 #: Name of the POSIX group that shares cross-user maildrops (phase 2). Members (senders) may drop +
 #: traverse but not list/read; only the receiver reads. Provisioning: ``CROSS-USER-SETUP.md``.
 MESH_GROUP = "mesh"

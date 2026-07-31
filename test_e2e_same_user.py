@@ -69,10 +69,12 @@ class E2ESameUserTest(unittest.TestCase):
         # kernel-verified sender uid in the header
         self.assertIn(str(UID), out)
 
-        # 3. second inject from B → nothing (dedup/replay)
+        # 3. second inject from B → the body is never repeated (dedup/replay); at most the
+        #    bounded metadata-only unread reminder re-surfaces.
         rc2, out2 = _run_inject(UID, "projectB", self.root)
         self.assertEqual(rc2, 0)
-        self.assertEqual(out2, "")
+        self.assertNotIn("hello from A", out2)
+        self.assertNotIn("mesh-msg", out2)
 
     def test_janitor_recovers_orphaned_and_delivers(self):
         # Send A→B, claim the message manually into cur/ (as if a session crashed before
