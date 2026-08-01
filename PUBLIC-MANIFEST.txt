@@ -22,6 +22,17 @@
 # it exists to stop: a new module dropped next to the existing ones was auto-published, and
 # the default-deny only ever guarded new top-level directories. Every module is now listed by
 # name, so adding one to the public build is a line someone writes on purpose.
+# Not covered by `pm_mesh/*.py`: these are non-code files in the package dir. Listed one by
+# Still a glob: tests are not product surface and every test file also passes the org-literal
+# denylist. Residual risk accepted — a NEW test file crossing over is caught by that denylist,
+# not by this manifest.
+# one on purpose — a `pm_mesh/*` glob would auto-publish any future non-code file dropped
+# there, which is exactly the class this manifest exists to stop.
+# ── Operator docs + the hardened profile that ship INSIDE the package ────────────────
+# ── Tests (glob, deliberately) ───────────────────────────────────────────────────────
+pm_mesh/CAPABILITY-PROFILES.md
+pm_mesh/CROSS-USER-SETUP.md
+pm_mesh/LEADER-READ-CONSENT.md
 pm_mesh/__init__.py
 pm_mesh/ack_cli.py
 pm_mesh/acks.py
@@ -39,6 +50,10 @@ pm_mesh/dcp_send.py
 pm_mesh/delivery.py
 pm_mesh/doctor.py
 pm_mesh/enroll.py
+pm_mesh/eval_cli.py
+pm_mesh/eval_corpus.py
+pm_mesh/eval_run.py
+pm_mesh/eval_score.py
 pm_mesh/fastmode.py
 pm_mesh/frame.py
 pm_mesh/group_reexec.py
@@ -47,6 +62,7 @@ pm_mesh/harness_onboard.py
 pm_mesh/identity.py
 pm_mesh/inject.py
 pm_mesh/maildir.py
+pm_mesh/mesh-session.settings.json
 pm_mesh/message.py
 pm_mesh/messages.py
 pm_mesh/onboard.py
@@ -68,27 +84,15 @@ pm_mesh/revoke.py
 pm_mesh/send.py
 pm_mesh/settings_merge.py
 pm_mesh/status.py
+pm_mesh/team_init.py
+pm_mesh/team_init_cli.py
+pm_mesh/templates/agent_skill.md.tmpl
 pm_mesh/trust.py
 pm_mesh/trust_cli.py
 pm_mesh/who.py
 pm_mesh/whoami.py
-
-# ── Tests (glob, deliberately) ───────────────────────────────────────────────────────
-# Still a glob: tests are not product surface and every test file also passes the org-literal
-# denylist. Residual risk accepted — a NEW test file crossing over is caught by that denylist,
-# not by this manifest.
 test_*.py
 tests/*.py
-
-# ── Operator docs + the hardened profile that ship INSIDE the package ────────────────
-# Not covered by `pm_mesh/*.py`: these are non-code files in the package dir. Listed one by
-# one on purpose — a `pm_mesh/*` glob would auto-publish any future non-code file dropped
-# there, which is exactly the class this manifest exists to stop.
-pm_mesh/CAPABILITY-PROFILES.md
-pm_mesh/CROSS-USER-SETUP.md
-pm_mesh/LEADER-READ-CONSENT.md
-pm_mesh/mesh-session.settings.json
-pm_mesh/templates/agent_skill.md.tmpl
 
 # ── The skill (the most-read public artifact) ────────────────────────────────────────
 skill/SKILL.md
@@ -105,6 +109,7 @@ LICENSE
 .gitignore
 
 # ── Docs dir (curated — NOT a glob over the internal docs/ tree) ─────────────────────
+docs/EVAL-HARNESS.md
 docs/EXAMPLE.md
 docs/SCALING.md
 

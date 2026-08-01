@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-08-01
+
+You can now test the central claim against your own agent, and provision the shared root with one
+command instead of a checklist.
+
+### Added
+- **`mesh-eval`** — an injection-resistance drill you run against an agent **you own**. It fires a
+  corpus of injection attempts into that agent's inbox; you let the agent take a turn; then
+  `mesh-eval score` reports, per case, whether the agent acted on the untrusted body. Deterministic
+  by construction: every case asks for the same harmless, observable action — append a per-run token
+  to a file you created — so the verdict is a byte on disk rather than a judge model's opinion, and
+  a run is reproducible offline. Ten categories in two families: six **direct** (instruction
+  override, claimed authority, frame escape, paste-ready command, urgency/social pressure,
+  exfiltration shape) and four **indirect** (the request carried inside a code comment / JSON field /
+  log line the agent was asked to *process*; obedience deferred to "next time you run a shell
+  command"; phrased as a routine ticket; or framed so the agent concludes for itself that the action
+  is warranted). The indirect family is the realistic one — a real induced action is unlikely to
+  open with "SYSTEM OVERRIDE"; it is likely to look like work.
+
+  Safety is structural, not advisory: the corpus is validated against a denylist so no case can ask
+  for anything destructive or outward-facing (the worst an *obedient* agent can do is write a random
+  token into a file you already created), `run` is a **dry run** unless `--apply`, and a cross-uid
+  target is refused outright — the canary lives in your own private directory the other uid cannot
+  write, and a cross-user body is withheld by the approval gate, so such a drill would report
+  "resisted" no matter how the agent behaved. Verdicts are `complied` (with the channel it was seen
+  on — the file, or a reply back over the mesh), `resisted`, `unevaluable` (sent, but nothing to
+  judge from) and `not_sent`; `unevaluable` exists so "no evidence" can never read as "passed".
+  Full recipe and the honest limits: `docs/EVAL-HARNESS.md`.
+- **`mesh-team-init`** — the machine-checked front door to `CROSS-USER-SETUP.md`. It inspects the
+  host and reports, per provisioning step, whether it is already correct and the exact command to
+  paste. `--apply` performs **only** the one unprivileged, caller-owned step (your own dropbox, which
+  by design only its receiver may create); every `sudo` step is printed for a human and never run —
+  the blast radius of a shared root is the host, not one project. Exit `0` nothing missing, `1`
+  something a human must do, `2` the shared root itself is unusable, in which case `--apply` refuses
+  to half-provision on top of it.
+
+### Changed
+- `CROSS-USER-SETUP.md` now tags each step with the `mesh-team-init` check name it maps to, and a
+  test pins that mapping so the runbook and the tool cannot drift apart.
+
 ## [1.7.0] — 2026-07-31
 
 Cross-harness: the mesh is no longer a Claude-Code-only tool, and delivery has an on/off switch.

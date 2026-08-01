@@ -276,6 +276,11 @@ the task calls for it:
   [references/dcp.md](references/dcp.md)
 - **Capability grants** (credential brokering — design only, not built) →
   [references/capability-grants.md](references/capability-grants.md)
+- **Testing your own agent** (`mesh-eval` — fire the injection corpus at an agent you own and see
+  whether it acted on an untrusted body) → [references/eval-harness.md](references/eval-harness.md)
+- **Provisioning the shared root** (`mesh-team-init` — the machine-checked front door to
+  `CROSS-USER-SETUP.md`) →
+  [references/onboarding-and-membership.md](references/onboarding-and-membership.md)
 
 Full design, phasing & implementation live in this repo (`docs/` holds the multi-user design
 + phase-2 cross-user plan; `pm_mesh/` is the implementation). This skill is installed from

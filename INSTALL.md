@@ -7,7 +7,7 @@ substitute your own; `$REPO` = wherever you cloned this repo):
 | # | Integration point | Location | What |
 |---|---|---|---|
 | 1 | Python path | `~/.local/lib/python3.12/site-packages/pm-mesh.pth` | one line: `$REPO` (your clone path) → makes `python3 -m pm_mesh.*` importable everywhere |
-| 2 | CLI wrappers | `/usr/local/bin/mesh-send`, `/usr/local/bin/mesh-inject`, `/usr/local/bin/mesh-who`, `/usr/local/bin/mesh-resolve`, `/usr/local/bin/mesh-trust`, `/usr/local/bin/mesh-consent`, `/usr/local/bin/mesh-enroll`, `/usr/local/bin/mesh-badge`, `/usr/local/bin/mesh-onboard` (root), `/usr/local/bin/mesh-whoami`, `/usr/local/bin/mesh-poll`, `/usr/local/bin/mesh-addressbook-add`, `/usr/local/bin/mesh-doctor`, `/usr/local/bin/mesh-read`, `/usr/local/bin/mesh-ack`, `/usr/local/bin/mesh-onboard-agent` | thin `exec python3 -m pm_mesh.{send,inject,who,resolve,trust_cli,consent,enroll,badge,onboard,whoami,poll,addressbook_add,doctor,read_cli,ack_cli,harness_onboard} "$@"` (`mesh-whoami` = print your own `uid:project` address — the reliable way to find your uid instead of guessing; `mesh-who` = same-user session discovery; `mesh-resolve` = address-book alias lookup, sender-side convenience only; `mesh-trust` = per-sender-uid trust-level CLI, receiver-owned; `mesh-consent` = leader-read grant/revoke/status, phase 2; `mesh-enroll` = member onboarding/offboarding; `mesh-badge` = harness-independent statusbar unread/held indicator, read-only; `mesh-onboard` = steward/participant Q&A wizard that writes the address book + intent permission matrix, spec §6c; `mesh-poll` = prompt-free fast-mode/snel-modus state persistence (`fastmode get/set/off`); `mesh-addressbook-add` = write one entry into the address book, merge-never-overwrite; `mesh-doctor` = read-only diagnosis when a message never arrived — hook wiring, skill symlink, env, mailbox perms, mis-owned dropboxes; `mesh-read <id>` = re-render a message you already saw once; `mesh-ack <id>|--all` = stop its unread reminders; `mesh-onboard-agent <harness>` = wire a non-Claude harness (codex/gemini/openclaw) onto the mesh with a provenance manifest) |
+| 2 | CLI wrappers | `/usr/local/bin/mesh-send`, `/usr/local/bin/mesh-inject`, `/usr/local/bin/mesh-who`, `/usr/local/bin/mesh-resolve`, `/usr/local/bin/mesh-trust`, `/usr/local/bin/mesh-consent`, `/usr/local/bin/mesh-enroll`, `/usr/local/bin/mesh-badge`, `/usr/local/bin/mesh-onboard` (root), `/usr/local/bin/mesh-whoami`, `/usr/local/bin/mesh-poll`, `/usr/local/bin/mesh-addressbook-add`, `/usr/local/bin/mesh-doctor`, `/usr/local/bin/mesh-read`, `/usr/local/bin/mesh-ack`, `/usr/local/bin/mesh-onboard-agent`, `/usr/local/bin/mesh-eval`, `/usr/local/bin/mesh-team-init` | thin `exec python3 -m pm_mesh.{send,inject,who,resolve,trust_cli,consent,enroll,badge,onboard,whoami,poll,addressbook_add,doctor,read_cli,ack_cli,harness_onboard,eval_cli,team_init_cli} "$@"` (`mesh-whoami` = print your own `uid:project` address — the reliable way to find your uid instead of guessing; `mesh-who` = same-user session discovery; `mesh-resolve` = address-book alias lookup, sender-side convenience only; `mesh-trust` = per-sender-uid trust-level CLI, receiver-owned; `mesh-consent` = leader-read grant/revoke/status, phase 2; `mesh-enroll` = member onboarding/offboarding; `mesh-badge` = harness-independent statusbar unread/held indicator, read-only; `mesh-onboard` = steward/participant Q&A wizard that writes the address book + intent permission matrix, spec §6c; `mesh-poll` = prompt-free fast-mode/snel-modus state persistence (`fastmode get/set/off`); `mesh-addressbook-add` = write one entry into the address book, merge-never-overwrite; `mesh-doctor` = read-only diagnosis when a message never arrived — hook wiring, skill symlink, env, mailbox perms, mis-owned dropboxes; `mesh-read <id>` = re-render a message you already saw once; `mesh-ack <id>|--all` = stop its unread reminders; `mesh-onboard-agent <harness>` = wire a non-Claude harness (codex/gemini/openclaw) onto the mesh with a provenance manifest; `mesh-eval` = injection-resistance drill against an agent you own — `list`/`run --to <addr> [--apply]`/`score --latest`, see `docs/EVAL-HARNESS.md`; `mesh-team-init` = shared-root provisioning plan, read-only unless `--apply`, which does only the caller-owned half and never runs a root step) |
 | 3 | Skill | `~/.claude/skills/pm-mesh` → symlink → `…/pm-mesh/skill` | canonical source lives in the repo (`skill/SKILL.md`), versioned; the symlink keeps it discoverable for Claude Code |
 | 4 | Inject hook | `~/.claude/settings.json` (SessionStart + UserPromptSubmit) | `command: /usr/local/bin/mesh-inject` |
 
@@ -82,6 +82,23 @@ sudo tee /usr/local/bin/mesh-ack >/dev/null <<'EOF'
 : "${MESH_ROOT:=/srv/mesh}"; export MESH_ROOT
 exec python3 -m pm_mesh.ack_cli "$@"
 EOF
+sudo tee /usr/local/bin/mesh-eval >/dev/null <<'EOF'
+#!/usr/bin/env sh
+# mesh-eval — injection-resistance drill: fire the test corpus at an agent you OWN, then score the
+# canary (see docs/EVAL-HARNESS.md). Defaults to the shared root so `run --apply` reaches a live
+# session there, symmetric with mesh-send. Run dirs + manifests live under
+# $XDG_DATA_HOME/agentixmesh-eval, NOT the mesh root. Override with MESH_ROOT.
+: "${MESH_ROOT:=/srv/mesh}"; export MESH_ROOT
+exec python3 -m pm_mesh.eval_cli "$@"
+EOF
+sudo tee /usr/local/bin/mesh-team-init >/dev/null <<'EOF'
+#!/usr/bin/env sh
+# mesh-team-init — shared-root provisioning plan (see pm_mesh/CROSS-USER-SETUP.md). Read-only by
+# default; --apply does ONLY the caller-owned half and never runs a root step. Defaults to the
+# shared root, since provisioning it is the whole point. Override with MESH_ROOT.
+: "${MESH_ROOT:=/srv/mesh}"; export MESH_ROOT
+exec python3 -m pm_mesh.team_init_cli "$@"
+EOF
 sudo tee /usr/local/bin/mesh-doctor >/dev/null <<'EOF'
 #!/usr/bin/env sh
 # mesh-doctor — strictly read-only self-diagnosis of the host wiring (hook, skill symlink,
@@ -116,6 +133,7 @@ sudo chmod +x /usr/local/bin/mesh-send /usr/local/bin/mesh-inject /usr/local/bin
   /usr/local/bin/mesh-resolve /usr/local/bin/mesh-trust /usr/local/bin/mesh-consent \
   /usr/local/bin/mesh-enroll /usr/local/bin/mesh-badge /usr/local/bin/mesh-onboard \
   /usr/local/bin/mesh-whoami /usr/local/bin/mesh-poll /usr/local/bin/mesh-addressbook-add /usr/local/bin/mesh-doctor \
+  /usr/local/bin/mesh-eval /usr/local/bin/mesh-team-init \
   /usr/local/bin/mesh-read /usr/local/bin/mesh-ack /usr/local/bin/mesh-onboard-agent
 
 # 3) Skill symlink

@@ -26,6 +26,24 @@ sessions exchange messages **without inheriting each other's authority**. The gu
 badly-configured agent can still be talked into acting. The guarantee is the boundary and the gate,
 not omniscience.
 
+**And you can check that claim against your own agent.** `mesh-eval` fires a corpus of injection
+attempts at an agent *you own* and reports, per case, whether it acted on an untrusted body. Every
+case asks for the same harmless, observable thing — append a planted token to a file you created —
+so the verdict is a byte on disk, not a judge model's opinion:
+
+```sh
+mesh-eval run --to <uid:project> --apply   # drop the corpus into that agent's inbox
+# …let the agent process its inbox…
+mesh-eval score --latest                   # per case: complied / resisted / unevaluable
+```
+
+Ten categories in two families: six **direct** (a body that asks in the imperative — fake system
+override, claimed human approval, frame escape, paste-ready command, urgency, exfiltration) and four
+**indirect** (the request hidden in a code comment/JSON/log the agent was asked to *process*,
+deferred to "next time you use a shell", shaped like a routine ticket, or framed so the agent
+concludes for itself that the action is warranted). A clean run is a **floor, not a certificate** —
+`docs/EVAL-HARNESS.md` states exactly what it does and does not prove.
+
 **Validated end-to-end.** The same-user core and cross-user human-gate messaging are proven between
 real, separate OS accounts — bidirectional agent↔agent, plus adversarial prompt-injection probes: a
 message instructing the receiver to run a shell command and to exfiltrate credentials was correctly
@@ -132,7 +150,7 @@ Actively on the agenda, in the open:
 
 ## Tests
 ```
-python3 -m pytest -q          # canonical (709 passed, 1 skipped)
+python3 -m pytest -q          # canonical (959 passed, 30 skipped)
 # or, without pytest:
 python3 -m unittest discover -s . -p 'test_*.py'
 ```

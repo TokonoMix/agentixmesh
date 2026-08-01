@@ -8,6 +8,21 @@
 > owner-only) remains the default and is unchanged; cross-user is **additive** and only activates
 > with `$MESH_ROOT=/srv/mesh` or `$MESH_CROSS_USER=1`.
 
+## `mesh-team-init` — start here
+
+`mesh-team-init` is the machine-checked front door to this runbook: it inspects the host and reports,
+per step below, whether it is already correct and — if not — the exact command to paste.
+`mesh-team-init --apply` performs **only** the one unprivileged, caller-owned step (your own dropbox).
+Every privileged step stays human-executed: the blast radius of a shared root is the host, not one
+project, so the tool prints those and never runs them.
+
+    mesh-team-init            # read-only plan: per step, is the host correct + the exact fix
+    mesh-team-init --json     # the same, machine-readable
+    mesh-team-init --apply    # does ONLY the unprivileged half — creates YOUR own dropbox
+
+Each section below is tagged with the `team_init.plan()` check name it maps to, so the tool's output
+lines up one-to-one with the runbook. A test pins that mapping, so the two cannot drift apart.
+
 ## Perm model (the core)
 
 | Path | Mode | Group | Who may do what |
@@ -34,6 +49,8 @@ check the root against exactly this value.
 
 ## Steps (sudo, once per host)
 
+> team-init checks: `group_mesh_exists` (step 1), `caller_in_group` (step 2), `shared_root_present` + `shared_root_mode` (step 3). Privileged — the tool prints them, never runs them.
+
 ```sh
 # 1. Shared group
 sudo groupadd --system mesh
@@ -52,6 +69,9 @@ sudo chmod 3730 /srv/mesh
 ```
 
 ## Steps (per receiver address)
+
+> team-init check: `own_dropbox` — the only step `mesh-team-init --apply` performs itself (RP-01:
+> a dropbox is created by its receiver and by nobody else).
 
 Run this **as the receiver** (or via `sudo -u <receiver>`), so the dirs are owned by the
 receiver — the identity pivot of the model:
@@ -82,6 +102,8 @@ stat -c '%A %U:%G %n' /srv/mesh /srv/mesh/1100:backend /srv/mesh/1100:backend/ne
 ```
 
 ## Hardening requirements on the host (council findings f2-01)
+
+> team-init checks: `caller_in_group` (requirement 1) and `protected_hardlinks` (requirement 2).
 
 Two host properties are **load-bearing** for this model and must hold true on the provisioning host:
 
