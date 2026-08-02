@@ -16,7 +16,16 @@ from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
 from pm_mesh import eval_cli, eval_run, maildir
-from pm_mesh.eval_corpus import CORPUS, MARKER
+from pm_mesh.eval_corpus import CORPUS, MARKER, REQUIRED_FIELDS
+
+
+def _default_channel_ids():
+    """Case ids the bare CLI can fire — the canary-channel cases, which need no extra flag.
+
+    repo_edit and mesh_action observe a channel the CLI configures only with an extra
+    flag; until then a bare run carries them as skips rather than sending them.
+    """
+    return [c.id for c in CORPUS if "canary_path" in REQUIRED_FIELDS[c.category]]
 
 
 class _Isolated(unittest.TestCase):
@@ -70,7 +79,10 @@ class RunTest(_Isolated):
         self.assertIn("run_id:", out)
         self.assertIn("mesh-eval score", out)
 
-    def test_apply_sends_every_case(self):
+    def test_apply_sends_every_default_channel_case(self):
+        # A bare run configures only the canary channel, so it fires the canary cases and carries
+        # the repo_edit cases as skips (their channel needs an extra flag). It must not silently
+        # send fewer than the whole canary set, and it must not send the skipped ones.
         sent = []
         real = maildir.deliver
 
@@ -81,7 +93,8 @@ class RunTest(_Isolated):
         with mock.patch.object(maildir, "deliver", side_effect=spy):
             rc, out, _ = self._run(["run", "--to", self.addr, "--apply"])
         self.assertEqual(rc, 0)
-        self.assertEqual(len(sent), len(CORPUS))
+        self.assertEqual(len(sent), len(_default_channel_ids()))
+        self.assertLess(len(sent), len(CORPUS), "the repo_edit cases were skipped, not sent")
 
     def test_blind_warns(self):
         rc, _out, err = self._run(["run", "--to", self.addr, "--blind"])
@@ -140,15 +153,78 @@ class RunTest(_Isolated):
         self.assertIn("cannot be scored", err)
 
 
+class ChannelFlagTest(_Isolated):
+    """The --repo-file / --third-addr flags and the skip announcement."""
+
+    def _manifest_for(self, run_id):
+        with open(eval_run.manifest_path(run_id), encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_repo_file_and_third_addr_reach_the_engine(self):
+        repo = os.path.join(self._tmp.name, "in_tree.py")
+        third = f"{self.uid}:third_party"
+        rc, out, err = self._run([
+            "run", "--to", self.addr, "--apply",
+            "--repo-file", repo, "--third-addr", third,
+        ])
+        self.assertEqual(rc, 0)
+        manifest = self._manifest_for(self._run_id(out))
+        self.assertEqual(manifest["repo_file_path"], repo)
+        self.assertEqual(manifest["third_addr"], third)
+        # Every shipped category was fired — no skip_reason anywhere.
+        self.assertFalse(any(c.get("skip_reason") for c in manifest["cases"]))
+        self.assertTrue(os.path.isfile(repo))  # the engine planted it
+
+    def test_missing_flags_warn_before_any_send(self):
+        sent_at = []
+        first_warning_seen = {"done": False}
+        real = maildir.deliver
+
+        # Record, at the moment of the first send, whether the skip warning had already been printed.
+        err_buf = io.StringIO()
+
+        def spy(msg, *a, **k):
+            if "repo_edit" in err_buf.getvalue():
+                first_warning_seen["done"] = True
+            sent_at.append(msg)
+            return real(msg, *a, **k)
+
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err_buf):
+            with mock.patch.object(maildir, "deliver", side_effect=spy):
+                eval_cli.main(["run", "--to", self.addr, "--apply"])
+        err = err_buf.getvalue()
+        self.assertIn("repo_edit", err)
+        self.assertIn("mesh_action", err)
+        self.assertIn("--repo-file", err)
+        self.assertIn("--third-addr", err)
+        self.assertTrue(sent_at, "some canary cases should still have sent")
+        self.assertTrue(first_warning_seen["done"], "the skip warning must precede the first send")
+
+    def test_apply_message_counts_only_what_was_sent(self):
+        with mock.patch.object(maildir, "deliver"):
+            rc, out, _ = self._run(["run", "--to", self.addr, "--apply"])
+        self.assertEqual(rc, 0)
+        # Sent count excludes the skipped repo_edit / mesh_action cases.
+        self.assertIn(f"sent {len(_default_channel_ids())} case", out)
+
+
 class ScoreTest(_Isolated):
     def _apply_run(self):
         rc, out, _ = self._run(["run", "--to", self.addr, "--apply"])
         assert rc == 0
         return self._run_id(out)
 
-    def test_score_latest_all_resisted_exit_0(self):
-        self._apply_run()  # nobody processes the inbox -> canary stays empty
-        rc, out, _ = self._run(["score", "--latest"])
+    def test_score_full_canary_coverage_all_resisted_exit_0(self):
+        # Exit 0 means every SELECTED case was fired and resisted. A bare run now skips the repo_edit
+        # cases (their channel is unconfigured) and so can never be 0; restrict the selection to the
+        # canary cases — which need no extra flag — to exercise the clean-pass path. --cases is a
+        # deliberate narrowing, not a skip, so it does not withhold the 0.
+        ids = ",".join(_default_channel_ids())
+        rc, out, _ = self._run(["run", "--to", self.addr, "--apply", "--cases", ids])
+        self.assertEqual(rc, 0)
+        run_id = self._run_id(out)
+        rc, out, _ = self._run(["score", "--run", run_id])  # nobody processes -> canary stays empty
         self.assertEqual(rc, 0)
         self.assertIn("evidence, not immunity", out)  # honesty paragraph present
 
@@ -172,7 +248,9 @@ class ScoreTest(_Isolated):
     def test_score_json_is_parseable(self):
         self._apply_run()
         rc, out, _ = self._run(["score", "--latest", "--json"])
-        self.assertIn(rc, (0, 1))
+        # A bare run skips repo_edit, so the exit is 2 here; this test only pins that the JSON body
+        # parses and carries totals (the exit-code contract is pinned by its own tests).
+        self.assertIn(rc, (0, 1, 2))
         parsed = json.loads(out)
         self.assertIn("totals", parsed)
 
@@ -185,6 +263,70 @@ class ScoreTest(_Isolated):
         rc, _out, err = self._run(["score", "--run", "no-such-run"])
         self.assertEqual(rc, 2)
         self.assertIn("cannot read manifest", err)
+
+    def test_score_with_skips_exits_2_and_explains_it_is_coverage_not_failure(self):
+        # A bare apply run skips repo_edit + mesh_action, so score exits 2 — but must say plainly
+        # that 2 means incomplete coverage, not a failed drill, and repeat the flags.
+        run_id = self._apply_run()  # nobody processes the inbox; canary resists
+        rc, out, err = self._run(["score", "--run", run_id])
+        self.assertEqual(rc, 2)
+        text = out + err
+        self.assertIn("coverage", text.lower())
+        self.assertIn("not failure", text.lower())
+        self.assertIn("--repo-file", text)
+        self.assertIn("--third-addr", text)
+
+    def test_full_coverage_clean_run_is_still_exit_0(self):
+        repo = os.path.join(self._tmp.name, "clean.py")
+        third = f"{self.uid}:third_party"
+        rc, out, _ = self._run([
+            "run", "--to", self.addr, "--apply", "--repo-file", repo, "--third-addr", third,
+        ])
+        self.assertEqual(rc, 0)
+        run_id = self._run_id(out)
+        rc, out, _ = self._run(["score", "--run", run_id])  # nobody complies
+        self.assertEqual(rc, 0)
+
+    def test_complied_repo_edit_prints_path_and_revert_advice(self):
+        from pm_mesh.eval_corpus import CORPUS
+        repo = os.path.join(self._tmp.name, "committed_by_mistake.py")
+        rc, out, _ = self._run(["run", "--to", self.addr, "--apply", "--repo-file", repo])
+        self.assertEqual(rc, 0)
+        run_id = self._run_id(out)
+        with open(eval_run.manifest_path(run_id), encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        # The agent-under-test obeyed a repo_edit case: its token lands in the in-tree file.
+        repo_case = next(c for c in manifest["cases"] if c["category"] == "repo_edit")
+        with open(repo, "a", encoding="utf-8") as fh:
+            fh.write(f"\nMARKER = {repo_case['token']}\n")
+        rc, out, err = self._run(["score", "--run", run_id])
+        self.assertEqual(rc, 1)  # a compliance still wins the exit code
+        text = out + err
+        self.assertIn(repo, text)              # names the modified file
+        self.assertIn("revert", text.lower())  # and says to revert it
+
+    def test_complied_mesh_action_scores_via_third_mailbox_through_the_cli(self):
+        # The analog of the repo_edit CLI test for the third-mailbox channel: the ONLY slice not
+        # otherwise proven is that _cmd_score actually wires third_tokens through to score(). Without
+        # this, a mesh_action case could only ever report "resisted" through the real entry point —
+        # the exact "channel that cannot report a compliance" defect this harness exists to prevent.
+        from pm_mesh import message
+        third = f"{self.uid}:third_party"
+        rc, out, _ = self._run(["run", "--to", self.addr, "--apply", "--third-addr", third])
+        self.assertEqual(rc, 0)
+        run_id = self._run_id(out)
+        with open(eval_run.manifest_path(run_id), encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        # The agent-under-test forwards one mesh_action case's token on to the third address.
+        mesh_case = next(c for c in manifest["cases"] if c["category"] == "mesh_action")
+        maildir.deliver(message.new_message(third, f"forwarding {mesh_case['token']}",
+                                            from_=manifest["from"]))
+        rc, out, _ = self._run(["score", "--run", run_id])
+        self.assertEqual(rc, 1)  # a compliance wins the exit code
+        complied = next(c for c in json.loads(
+            self._run(["score", "--run", run_id, "--json"])[1])["cases"]
+            if c["verdict"] == "complied")
+        self.assertEqual(complied["channel"], "third_mailbox")
 
 
 if __name__ == "__main__":

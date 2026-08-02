@@ -43,6 +43,14 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--canary-path", default=None,
                      help="where to plant the canary (default: inside the run dir, whose name "
                           "tells a reader this is a drill — pass a neutral path for a blind run)")
+    run.add_argument("--repo-file", default=None,
+                     help="in-tree file the repo_edit cases nominate; the engine creates it empty "
+                          "(0600) and watches it — pass a path you are willing to have written to. "
+                          "Without it the repo_edit cases are skipped.")
+    run.add_argument("--third-addr", default=None,
+                     help="third mesh address the mesh_action cases try to make the agent send to — "
+                          "an address you own, NOT the target and NOT your own. Without it the "
+                          "mesh_action cases are skipped.")
 
     score = sub.add_parser("score", help="score a run's canary and exit per the documented contract")
     g = score.add_mutually_exclusive_group()
@@ -103,7 +111,33 @@ def _cmd_run(args) -> int:
             file=sys.stderr,
         )
 
-    plan = eval_run.plan(cases, to=args.to, marker=marker)
+    plan = eval_run.plan(
+        cases, to=args.to, marker=marker,
+        repo_file=args.repo_file, third_addr=args.third_addr,
+    )
+
+    # Announce skipped categories BEFORE anything is sent — a drill that quietly tests eight of ten
+    # families while printing a confident summary is the silent-truncation failure this project keeps
+    # re-learning. The skill's own rule is: no silent caps.
+    skipped = [e for e in plan if e.get("skip_reason")]
+    if skipped:
+        by_reason: dict = {}
+        for entry in skipped:
+            key = (entry["category"], entry["skip_reason"])
+            by_reason[key] = by_reason.get(key, 0) + 1
+        print(
+            "mesh-eval run: the following categories will NOT be tested (their channel is not "
+            "configured) — a drill that skips a category cannot exit 0:",
+            file=sys.stderr,
+        )
+        for (category, reason), count in by_reason.items():
+            print(f"  {category}: {count} case(s) — {reason}", file=sys.stderr)
+        print(
+            "  supply --repo-file <path> (repo_edit) and/or --third-addr <uid:project> "
+            "(mesh_action) to include them.",
+            file=sys.stderr,
+        )
+
     try:
         manifest = eval_run.execute(
             plan,
@@ -111,17 +145,20 @@ def _cmd_run(args) -> int:
             dry_run=not args.apply,
             marker=marker,
             canary_path=args.canary_path,
+            repo_file=args.repo_file,
+            third_addr=args.third_addr,
         )
     except eval_run.EvalRunError as exc:
         print(f"mesh-eval run: {exc}", file=sys.stderr)
         return 2
 
     run_id = manifest["run_id"]
+    n_sent = sum(1 for e in plan if not e.get("skip_reason"))
     if args.apply:
-        print(f"sent {len(cases)} case(s) to {args.to}  (marker={'off' if args.blind else 'on'})")
+        print(f"sent {n_sent} case(s) to {args.to}  (marker={'off' if args.blind else 'on'})")
     else:
         print(
-            f"DRY RUN — nothing was sent. {len(cases)} case(s) planned for {args.to}. "
+            f"DRY RUN — nothing was sent. {n_sent} case(s) planned for {args.to}. "
             f"Re-run with --apply to actually send; a dry run tests nothing."
         )
     print(f"run_id: {run_id}")
@@ -163,12 +200,47 @@ def _cmd_score(args) -> int:
         print(f"mesh-eval score: cannot read manifest for run {run_id}: {exc}", file=sys.stderr)
         return 2
 
-    result = eval_score.score(manifest, reply_tokens=eval_run.observed_reply_tokens(manifest))
+    result = eval_score.score(
+        manifest,
+        reply_tokens=eval_run.observed_reply_tokens(manifest),
+        third_tokens=eval_run.observed_third_tokens(manifest),
+    )
     if args.json:
         print(eval_score.render_json(result))
     else:
         print(eval_score.render_report(result))
-    return eval_score.exit_code(result)
+    rc = eval_score.exit_code(result)
+
+    # A repo_edit compliance is unlike a canary one: the token landed in a file in a git working tree
+    # a human may later commit, not in a private run dir. Name the file and say, in words, to inspect
+    # and revert it — but never revert it automatically; the drill does not own the adopter's tree.
+    repo_complied = [
+        c for c in result.get("cases", [])
+        if c.get("channel") == "repo_file" and c.get("verdict") == "complied"
+    ]
+    if repo_complied:
+        repo_path = manifest.get("repo_file_path")
+        print(
+            f"mesh-eval score: a repo_edit case COMPLIED — the agent-under-test modified "
+            f"{repo_path}. That file is in a working tree a human may commit. Inspect it and revert "
+            f"the agent's change; the drill deliberately does not touch your tree, so it will not "
+            f"revert it for you.",
+            file=sys.stderr,
+        )
+
+    # A 2 caused by an unfired category is INCOMPLETE COVERAGE, not a failed drill. Say so plainly and
+    # repeat the flags, so an adopter with CI does not read the exit change as a regression.
+    if result.get("skipped"):
+        categories = sorted({s.get("category") for s in result["skipped"]})
+        print(
+            f"mesh-eval score: exit 2 here means INCOMPLETE COVERAGE, not failure — "
+            f"{len(result['skipped'])} case(s) across {', '.join(categories)} were not tested. "
+            f"Re-run 'mesh-eval run' with --repo-file <path> (repo_edit) and/or "
+            f"--third-addr <uid:project> (mesh_action) to cover them.",
+            file=sys.stderr,
+        )
+
+    return rc
 
 
 def main(argv=None) -> int:

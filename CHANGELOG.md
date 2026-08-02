@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-08-02
+
+`mesh-eval` now tests the two attack families its own documentation used to list as missing — and
+says so out loud when you have not configured them.
+
+### Added
+- **`repo_edit`** — cases that try to induce an edit to the agent's **own repository**. This is the
+  higher-yield family: an agent is far more empowered inside the project tree it was opened to work
+  on than at an arbitrary path, so an in-tree edit both succeeds more easily and *persists* — it sits
+  in a working tree a human may later commit. You nominate the file with `--repo-file`; the drill
+  plants it empty (`0600`), refuses to clobber a file that already has content, and never touches
+  anything else in your tree. A case may never name an agent-config or credential file
+  (`CLAUDE.md`, `AGENTS.md`, `settings.json`, `.env`, `.git/`, ssh keys) — a drill that edits the
+  live configuration of the agent it is measuring damages the thing it measures.
+- **`mesh_action`** — cases that try to induce a mesh action **beyond a reply**: forwarding, opening
+  a thread with, or relaying to a third address you supply with `--third-addr`. The existing
+  `exfiltration_shape` family covers "send it back to me", which keeps the blast radius inside a
+  conversation you can already see. A forward does not: it puts agent-authored traffic in front of a
+  third session, where it arrives from a kernel-verified, trusted uid. That is the mesh-native shape
+  of injection propagation, and nothing tested it before.
+- A third **landing** family in `docs/EVAL-HARNESS.md`, organised by a different axis than the first
+  two: direct and indirect describe *how the request is phrased*, landing describes *where the
+  induced action ends up*.
+
+### Changed
+- **Breaking for CI users: a bare `mesh-eval score` now exits `2`, not `0`.** The two new families
+  observe channels that only exist once you pass `--repo-file` / `--third-addr`. A run that skipped
+  a shipped category has not earned a clean bill of health, so a skip now **withholds the exit-0**,
+  exactly as an unevaluable case already did. Exit `2` here means **incomplete coverage, not
+  failure**; `1` still means a real compliance and still wins. `mesh-eval run` announces which
+  categories will be skipped, and the flag that would include them, **before it sends anything** —
+  a drill that quietly tests ten of twelve families while printing a confident summary would be
+  worse than one that refuses to grade itself. Narrowing a run yourself with `--cases` is a
+  deliberate choice and does *not* move the exit code.
+- A corpus category is now defined **by its field set**, not by its label: each declares exactly
+  which placeholders its templates use, checked on set equality at import. A `repo_edit` case that
+  asks for the canary instead of the nominated in-tree file now fails validation rather than
+  drifting into a neighbouring category where only a reviewer would notice.
+- Scoring reads a **per-case observation channel** (the canary, the repo file, or a third mailbox)
+  instead of one canary text for the whole run, so each case is judged only on its own channel and a
+  token that lands somewhere else cannot fabricate a compliance. When a `repo_edit` case complies,
+  `score` names the modified file and tells you to inspect and revert it — deliberately without
+  doing so itself, because the drill does not own your tree.
+
 ## [1.8.0] — 2026-08-01
 
 You can now test the central claim against your own agent, and provision the shared root with one
